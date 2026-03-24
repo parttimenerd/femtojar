@@ -42,7 +42,7 @@ Important:
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.0.0</version>
+  <version>0.1.0</version>
   <executions>
     <execution>
       <goals>
@@ -66,7 +66,7 @@ Important:
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.0.0</version>
+  <version>0.1.0</version>
   <executions>
     <execution>
       <id>recompress-jar</id>
@@ -122,19 +122,19 @@ mvn package
 Run it:
 
 ```bash
-java -jar target/femtojar-0.0.0-cli.jar --in app.jar --out app-optimized.jar
+java -jar target/femtojar-0.1.0-cli.jar --in app.jar --out app-optimized.jar
 ```
 
 Positional form:
 
 ```bash
-java -jar target/femtojar-0.0.0-cli.jar app.jar app-optimized.jar --compression default
+java -jar target/femtojar-0.1.0-cli.jar app.jar app-optimized.jar --compression default
 ```
 
 Benchmark form:
 
 ```bash
-java -jar target/femtojar-0.0.0-cli.jar --benchmark --in app.jar
+java -jar target/femtojar-0.1.0-cli.jar --benchmark --in app.jar
 ```
 
 CLI options:
