@@ -5,10 +5,6 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
 
 public class Main {
 
@@ -47,7 +43,7 @@ public class Main {
             BenchmarkRunner.Format format = config.benchmarkFormat == BenchmarkFormat.MARKDOWN
                     ? BenchmarkRunner.Format.MARKDOWN
                     : BenchmarkRunner.Format.TEXT;
-            return runner.run(inputJar, config.benchmarkIterations, format);
+            return runner.run(inputJar, format);
         }
 
         JarReencoder reencoder = new JarReencoder();
@@ -56,8 +52,8 @@ public class Main {
             if (inputJar.equals(outputJar)) {
                 result = reencoder.reencodeInPlaceBundled(
                         inputJar,
-                        config.useZopfli,
-                        config.zopfliIterations,
+                    config.compressionMode.useZopfli(),
+                    config.compressionMode.zopfliIterations(),
                         config.bundleResources,
                         "cli");
             } else {
@@ -65,8 +61,8 @@ public class Main {
                 reencoder.rewriteJarBundled(
                         inputJar,
                         outputJar,
-                        config.useZopfli,
-                        config.zopfliIterations,
+                    config.compressionMode.useZopfli(),
+                    config.compressionMode.zopfliIterations(),
                         config.bundleResources,
                         "cli");
                 long newSize = Files.size(outputJar);
@@ -75,9 +71,7 @@ public class Main {
 
             long saved = result.originalSize() - result.newSize();
             double ratio = result.originalSize() == 0 ? 0d : (saved * 100.0) / result.originalSize();
-            String mode = config.useZopfli
-                    ? "zopfli (iterations=" + config.zopfliIterations + ")"
-                    : "deflate (level=9)";
+            String mode = config.compressionMode.description();
             String bundledMode = config.bundleResources
                     ? "bundled classes + non-META-INF resources"
                     : "bundled classes only";
@@ -117,37 +111,33 @@ public class Main {
                     config.outputJar = Paths.get(args[i]);
                     i++;
                 }
+                case "--compression" -> {
+                    i = requireValue(args, i, "--compression");
+                    config.compressionMode = CompressionMode.parse(args[i]);
+                    i++;
+                }
                 case "--deflate" -> {
-                    config.useZopfli = false;
+                    config.compressionMode = CompressionMode.DEFAULT;
                     i++;
                 }
                 case "--zopfli" -> {
-                    config.useZopfli = true;
+                    config.compressionMode = CompressionMode.ZOPFLI;
                     i++;
                 }
-                case "--zopfli-iterations" -> {
-                    i = requireValue(args, i, "--zopfli-iterations");
-                    try {
-                        config.zopfliIterations = Integer.parseInt(args[i]);
-                    } catch (NumberFormatException ex) {
-                        throw new IllegalArgumentException("Invalid value for --zopfli-iterations: " + args[i]);
-                    }
-                    if (config.zopfliIterations <= 0) {
-                        throw new IllegalArgumentException("--zopfli-iterations must be > 0");
-                    }
+                case "--max" -> {
+                    config.compressionMode = CompressionMode.MAX;
                     i++;
                 }
                 case "--bundle-resources" -> {
                     config.bundleResources = true;
                     i++;
                 }
-                case "--benchmark" -> {
-                    config.benchmark = true;
+                case "--no-bundle-resources" -> {
+                    config.bundleResources = false;
                     i++;
                 }
-                case "--benchmark-zopfli-iterations" -> {
-                    i = requireValue(args, i, "--benchmark-zopfli-iterations");
-                    config.benchmarkIterations = parseIterationList(args[i]);
+                case "--benchmark" -> {
+                    config.benchmark = true;
                     i++;
                 }
                 case "--benchmark-format" -> {
@@ -191,43 +181,17 @@ public class Main {
     private static void printUsage(PrintStream out) {
         out.println("femtojar CLI");
         out.println("Usage:");
-        out.println("  femtojar <input.jar> [output.jar] [--deflate] [--zopfli-iterations N] [--bundle-resources]");
-        out.println("  femtojar --in <input.jar> [--out <output.jar>] [--deflate] [--zopfli-iterations N] [--bundle-resources]");
-        out.println("  femtojar --benchmark --in <input.jar> [--benchmark-zopfli-iterations 7,15,100,1000] [--benchmark-format text|markdown]");
+        out.println("  femtojar <input.jar> [output.jar] [--compression default|zopfli|max] [--no-bundle-resources]");
+        out.println("  femtojar --in <input.jar> [--out <output.jar>] [--compression default|zopfli|max] [--no-bundle-resources]");
+        out.println("  femtojar --benchmark --in <input.jar> [--benchmark-format text|markdown]");
         out.println("  femtojar --help");
         out.println();
         out.println("Defaults:");
-        out.println("  compression: zopfli");
-        out.println("  zopfli iterations: 100");
-        out.println("  resource bundling: disabled");
-        out.println("  benchmark defaults: deflate + zopfli(7,15,100,1000), each with resources on/off, run in parallel");
+        out.println("  compression: default (deflate level=9)");
+        out.println("  resource bundling: enabled");
+        out.println("  benchmark modes: default, zopfli, max (each with resources on/off, run in parallel)");
         out.println("  benchmark format: text");
         out.println("  output: in-place if not specified");
-    }
-
-    private static List<Integer> parseIterationList(String text) {
-        String[] parts = text.split(",");
-        Set<Integer> values = new LinkedHashSet<>();
-        for (String part : parts) {
-            String trimmed = part.trim();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
-            int value;
-            try {
-                value = Integer.parseInt(trimmed);
-            } catch (NumberFormatException ex) {
-                throw new IllegalArgumentException("Invalid benchmark iteration value: " + trimmed);
-            }
-            if (value <= 0) {
-                throw new IllegalArgumentException("Benchmark iteration values must be > 0");
-            }
-            values.add(value);
-        }
-        if (values.isEmpty()) {
-            throw new IllegalArgumentException("--benchmark-zopfli-iterations requires at least one integer value");
-        }
-        return new ArrayList<>(values);
     }
 
     private static BenchmarkFormat parseBenchmarkFormat(String value) {
@@ -243,11 +207,9 @@ public class Main {
     private static final class CliConfig {
         private Path inputJar;
         private Path outputJar;
-        private boolean useZopfli = true;
-        private int zopfliIterations = 100;
-        private boolean bundleResources;
+        private CompressionMode compressionMode = CompressionMode.DEFAULT;
+        private boolean bundleResources = true;
         private boolean benchmark;
-        private List<Integer> benchmarkIterations;
         private BenchmarkFormat benchmarkFormat = BenchmarkFormat.TEXT;
         private boolean showHelp;
     }

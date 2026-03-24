@@ -80,31 +80,17 @@ class MainTest {
     }
 
     @Test
-    void failsForInvalidZopfliIterations() {
+    void failsForInvalidCompressionMode() {
         ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
         ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
 
         int exitCode = Main.run(
-                new String[]{"--in", "input.jar", "--zopfli-iterations", "0"},
+                new String[]{"--in", "input.jar", "--compression", "ultra"},
                 new PrintStream(outBytes),
                 new PrintStream(errBytes));
 
         assertEquals(2, exitCode);
-        assertTrue(new String(errBytes.toByteArray()).contains("--zopfli-iterations must be > 0"));
-    }
-
-    @Test
-    void failsForInvalidBenchmarkIterations() {
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
-
-        int exitCode = Main.run(
-                new String[]{"--benchmark", "--in", "input.jar", "--benchmark-zopfli-iterations", "10,abc"},
-                new PrintStream(outBytes),
-                new PrintStream(errBytes));
-
-        assertEquals(2, exitCode);
-        assertTrue(new String(errBytes.toByteArray()).contains("Invalid benchmark iteration value"));
+        assertTrue(new String(errBytes.toByteArray()).contains("Invalid value for --compression"));
     }
 
     @Test
@@ -166,15 +152,16 @@ class MainTest {
         ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
 
         int exitCode = Main.run(
-                new String[]{"--benchmark", "--in", inputJar.toString(), "--benchmark-zopfli-iterations", "12,24"},
+            new String[]{"--benchmark", "--in", inputJar.toString()},
                 new PrintStream(outBytes),
                 new PrintStream(errBytes));
 
         String output = outBytes.toString();
         assertEquals(0, exitCode, "Benchmark should succeed. stderr=" + errBytes);
         assertTrue(output.contains("Result table"), "Benchmark output should contain result table");
-        assertTrue(output.contains("deflate, resources=off"), "Benchmark output should include deflate mode");
-        assertTrue(output.contains("zopfli(12), resources=on"), "Benchmark output should include zopfli/resource mode");
+        assertTrue(output.contains("default, resources=off"), "Benchmark output should include default mode");
+        assertTrue(output.contains("zopfli, resources=on"), "Benchmark output should include zopfli/resource mode");
+        assertTrue(output.contains("max, resources=off"), "Benchmark output should include max mode");
         assertTrue(output.contains("Best setting:"), "Benchmark output should include best setting");
 
         byte[] currentBytes = Files.readAllBytes(inputJar);
@@ -192,7 +179,7 @@ class MainTest {
         ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
 
         int exitCode = Main.run(
-                new String[]{"--benchmark", "--benchmark-format", "markdown", "--in", inputJar.toString(), "--benchmark-zopfli-iterations", "12"},
+            new String[]{"--benchmark", "--benchmark-format", "markdown", "--in", inputJar.toString()},
                 new PrintStream(outBytes),
                 new PrintStream(errBytes));
 
@@ -201,7 +188,7 @@ class MainTest {
         assertTrue(output.contains("## femtojar benchmark"), "Markdown header should be present");
         assertTrue(output.contains("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) |"),
                 "Markdown table header should be present");
-        assertTrue(output.contains("| deflate, resources=off |"), "Markdown table should include deflate mode");
+        assertTrue(output.contains("| default, resources=off |"), "Markdown table should include default mode");
     }
 
     @Test

@@ -76,8 +76,7 @@ Important:
   <configuration>
     <failOnError>true</failOnError>
     <skip>false</skip>
-    <zopfli>true</zopfli>
-    <zopfliIterations>100</zopfliIterations>
+    <compressionMode>MAX</compressionMode>
     <bundleResources>false</bundleResources>
     <jars>
       <jar>
@@ -99,9 +98,8 @@ Important:
 | `jars` | List of JAR entries to reencode. Each entry has an `<in>` path and optional `<out>` path. | Required |
 | `jars[i].in` | Input JAR path (relative to `${project.build.directory}` if not absolute) | Required per entry |
 | `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
-| `zopfli` | Use Zopfli for the shared blob compression. | `true` |
-| `zopfliIterations` | Zopfli iteration count. Higher can compress better, but is slower. | `100` |
-| `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `false` |
+| `compressionMode` | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
+| `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `true` |
 | `failOnError` | Fail build immediately on rewrite errors. | `true` |
 | `skip` | Skip plugin execution. | `false` |
 
@@ -124,7 +122,7 @@ java -jar target/femtojar-0.0.0-cli.jar --in app.jar --out app-optimized.jar
 Positional form:
 
 ```bash
-java -jar target/femtojar-0.0.0-cli.jar app.jar app-optimized.jar --deflate
+java -jar target/femtojar-0.0.0-cli.jar app.jar app-optimized.jar --compression default
 ```
 
 Benchmark form:
@@ -137,12 +135,10 @@ CLI options:
 
 - `--in <path>`: input JAR path
 - `--out <path>`: output JAR path (optional, defaults to in-place rewrite)
-- `--deflate`: use deflate level 9 instead of Zopfli
-- `--zopfli`: force Zopfli mode
-- `--zopfli-iterations <n>`: Zopfli iteration count
-- `--bundle-resources`: bundle non-`META-INF/*` resources
+- `--compression <default|zopfli|max>`: compression preset (`default`=deflate, `zopfli`=7 iterations, `max`=100 iterations)
+- `--bundle-resources`: enable resource bundling (enabled by default)
+- `--no-bundle-resources`: disable resource bundling
 - `--benchmark`: run a non-destructive benchmark matrix in parallel and print size/time comparisons
-- `--benchmark-zopfli-iterations <i1,i2,...>`: optional comma-separated Zopfli iterations (default: `7,15,100,1000`)
 - `--benchmark-format <text|markdown>`: optional benchmark output format (default: `text`)
 - `-h`, `--help`: show usage
 

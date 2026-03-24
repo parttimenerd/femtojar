@@ -20,18 +20,15 @@ public class ReencodeJarsMojo extends AbstractMojo {
     @Parameter(property = "femtojar.failOnError", defaultValue = "true")
     private boolean failOnError;
 
-    @Parameter(property = "femtojar.zopfli", defaultValue = "true")
-    private boolean zopfli;
-
-    @Parameter(property = "femtojar.zopfliIterations", defaultValue = "100")
-    private int zopfliIterations;
+    @Parameter(property = "femtojar.compressionMode", defaultValue = "DEFAULT")
+    private CompressionMode compressionMode;
 
     /**
      * Bundle non-META-INF resources into the shared compressed blob.
      * Caveat: only getResourceAsStream() is guaranteed for bundled resources;
      * frameworks requiring resource URLs via getResource() may not work.
      */
-    @Parameter(property = "femtojar.bundleResources", defaultValue = "false")
+    @Parameter(property = "femtojar.bundleResources", defaultValue = "true")
     private boolean bundleResources;
 
     /**
@@ -101,8 +98,8 @@ public class ReencodeJarsMojo extends AbstractMojo {
                 if (sourceJarPath.equals(targetJarPath)) {
                     result = reencoder.reencodeInPlaceBundled(
                         sourceJarPath,
-                        zopfli,
-                        zopfliIterations,
+                        compressionMode.useZopfli(),
+                        compressionMode.zopfliIterations(),
                         bundleResources,
                         femtojarVersion);
                 } else {
@@ -110,8 +107,8 @@ public class ReencodeJarsMojo extends AbstractMojo {
                     reencoder.rewriteJarBundled(
                         sourceJarPath,
                         targetJarPath,
-                        zopfli,
-                        zopfliIterations,
+                        compressionMode.useZopfli(),
+                        compressionMode.zopfliIterations(),
                         bundleResources,
                         femtojarVersion);
                     long newSize = Files.size(targetJarPath);
@@ -119,12 +116,16 @@ public class ReencodeJarsMojo extends AbstractMojo {
                 }
                 long saved = result.originalSize() - result.newSize();
                 double ratio = result.originalSize() == 0 ? 0d : (saved * 100.0) / result.originalSize();
-                String compressionMode = zopfli ? "zopfli (iterations=" + zopfliIterations + ")" : "deflate (level=9)";
+                String compressionModeLabel = switch (compressionMode) {
+                    case DEFAULT -> "default (deflate level=9)";
+                    case ZOPFLI -> "zopfli (iterations=7)";
+                    case MAX -> "max (zopfli iterations=100)";
+                };
                 String bundledMode = bundleResources
                     ? "bundled classes + non-META-INF resources"
                     : "bundled classes only";
                 getLog().info("Re-encoded " + sourceJarPath + " -> " + targetJarPath + " with " + bundledMode + " + "
-                        + compressionMode + ": " + result.originalSize() + " -> " + result.newSize()
+                        + compressionModeLabel + ": " + result.originalSize() + " -> " + result.newSize()
                         + " bytes (saved " + saved + " bytes, " + String.format("%.2f", ratio) + "%)");
             } catch (IOException e) {
                 String message = "Failed to re-encode JAR: " + sourceJarPath + " -> " + targetJarPath;

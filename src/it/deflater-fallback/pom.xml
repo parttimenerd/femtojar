@@ -39,7 +39,7 @@
               <goal>reencode-jars</goal>
             </goals>
             <configuration>
-              <zopfli>false</zopfli>
+              <compressionMode>DEFAULT</compressionMode>
               <jars>
                 <jar>
                   <in>${project.build.finalName}.jar</in>

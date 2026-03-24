@@ -32,14 +32,13 @@ public class BenchmarkRunner {
     }
 
     /**
-     * Runs benchmark across deflate/zopfli with various iterations and resource bundling options.
+     * Runs benchmark across compression modes and resource bundling options.
      *
      * @param inputJar path to input JAR
-     * @param zopfliIterations list of zopfli iteration counts to test (can be null)
      * @param format output format (text or markdown)
      * @return exit code (0 on success, 1 on failure)
      */
-    public int run(Path inputJar, List<Integer> zopfliIterations, Format format) {
+    public int run(Path inputJar, Format format) {
         long originalSize;
         try {
             originalSize = Files.size(inputJar);
@@ -48,16 +47,10 @@ public class BenchmarkRunner {
             return 1;
         }
 
-        if (zopfliIterations == null || zopfliIterations.isEmpty()) {
-            zopfliIterations = List.of(7, 15, 100, 1000);
-        }
-
         List<BenchmarkCase> cases = new ArrayList<>();
-        cases.add(new BenchmarkCase(false, 0, false));
-        cases.add(new BenchmarkCase(false, 0, true));
-        for (int iterations : zopfliIterations) {
-            cases.add(new BenchmarkCase(true, iterations, false));
-            cases.add(new BenchmarkCase(true, iterations, true));
+        for (CompressionMode mode : List.of(CompressionMode.DEFAULT, CompressionMode.ZOPFLI, CompressionMode.MAX)) {
+            cases.add(new BenchmarkCase(mode, false));
+            cases.add(new BenchmarkCase(mode, true));
         }
 
         List<BenchmarkResult> results = new ArrayList<>();
@@ -121,8 +114,8 @@ public class BenchmarkRunner {
             reencoder.rewriteJarBundled(
                     inputJar,
                     tempOut,
-                    benchmarkCase.useZopfli,
-                    benchmarkCase.zopfliIterations,
+                    benchmarkCase.mode.useZopfli(),
+                    benchmarkCase.mode.zopfliIterations(),
                     benchmarkCase.bundleResources,
                     "cli-benchmark");
             long elapsedNs = System.nanoTime() - startNs;
@@ -183,11 +176,11 @@ public class BenchmarkRunner {
         out.println("Best setting: " + best.benchmarkCase().label());
     }
 
-    private record BenchmarkCase(boolean useZopfli, int zopfliIterations, boolean bundleResources) {
+    private record BenchmarkCase(CompressionMode mode, boolean bundleResources) {
         private String label() {
-            String mode = useZopfli ? "zopfli(" + zopfliIterations + ")" : "deflate";
+            String modeLabel = mode.cliValue();
             String resources = bundleResources ? "resources=on" : "resources=off";
-            return mode + ", " + resources;
+            return modeLabel + ", " + resources;
         }
     }
 

@@ -1,6 +1,6 @@
 # Example Project Using `femtojar`
 
-This project demonstrates using the `femtojar` Maven plugin to recompress a combined (shaded) runnable JAR in place with zlib max compression.
+This project demonstrates using the `femtojar` Maven plugin to recompress a combined (shaded) runnable JAR in place.
 
 ## Build Steps
 
