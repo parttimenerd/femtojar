@@ -125,8 +125,6 @@ Benchmark form:
 
 ```bash
 java -jar target/femtojar-0.0.0-cli.jar --benchmark --in app.jar
-java -jar target/femtojar-0.0.0-cli.jar --benchmark --in app.jar --benchmark-zopfli-iterations 15,30,80
-java -jar target/femtojar-0.0.0-cli.jar --benchmark --benchmark-format markdown --in app.jar
 ```
 
 CLI options:
@@ -137,9 +135,9 @@ CLI options:
 - `--zopfli`: force Zopfli mode
 - `--zopfli-iterations <n>`: Zopfli iteration count
 - `--bundle-resources`: bundle non-`META-INF/*` resources
-- `--benchmark`: run a non-destructive benchmark matrix and print size/time comparisons
-- `--benchmark-zopfli-iterations <i1,i2,...>`: comma-separated Zopfli iterations for benchmark mode
-- `--benchmark-format <text|markdown>`: benchmark output format (default: `text`)
+- `--benchmark`: run a non-destructive benchmark matrix in parallel and print size/time comparisons
+- `--benchmark-zopfli-iterations <i1,i2,...>`: optional comma-separated Zopfli iterations (default: `7,15,100,1000`)
+- `--benchmark-format <text|markdown>`: optional benchmark output format (default: `text`)
 - `-h`, `--help`: show usage
 
 ## Build and Test

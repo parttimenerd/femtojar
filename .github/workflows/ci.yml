@@ -89,7 +89,7 @@ jobs:
           EXAMPLE_JAR="example-project/target/demo-app-1.0-SNAPSHOT.jar"
           echo "Using CLI jar: ${CLI_JAR}"
           echo "Benchmark target: ${EXAMPLE_JAR}"
-          java -jar "${CLI_JAR}" --benchmark --benchmark-format markdown --in "${EXAMPLE_JAR}" --benchmark-zopfli-iterations 15,50,100 | tee benchmark-output.md
+          java -jar "${CLI_JAR}" --benchmark --benchmark-format markdown --in "${EXAMPLE_JAR}" | tee benchmark-output.md
           cat benchmark-output.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload example artifact

@@ -193,13 +193,14 @@ public class Main {
         out.println("Usage:");
         out.println("  femtojar <input.jar> [output.jar] [--deflate] [--zopfli-iterations N] [--bundle-resources]");
         out.println("  femtojar --in <input.jar> [--out <output.jar>] [--deflate] [--zopfli-iterations N] [--bundle-resources]");
-        out.println("  femtojar --benchmark --in <input.jar> [--benchmark-zopfli-iterations 15,50,100] [--benchmark-format text|markdown]");
+        out.println("  femtojar --benchmark --in <input.jar> [--benchmark-zopfli-iterations 7,15,100,1000] [--benchmark-format text|markdown]");
         out.println("  femtojar --help");
         out.println();
         out.println("Defaults:");
         out.println("  compression: zopfli");
         out.println("  zopfli iterations: 100");
         out.println("  resource bundling: disabled");
+        out.println("  benchmark defaults: deflate + zopfli(7,15,100,1000), each with resources on/off, run in parallel");
         out.println("  benchmark format: text");
         out.println("  output: in-place if not specified");
     }

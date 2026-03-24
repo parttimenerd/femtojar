@@ -6,9 +6,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Runs non-destructive JAR reencoding benchmarks across a matrix of compression settings.
@@ -18,22 +21,6 @@ public class BenchmarkRunner {
     public enum Format {
         TEXT,
         MARKDOWN
-    }
-
-    public static class Result {
-        public final Map<String, int[]> classIndex;
-        public final Map<String, int[]> resourceIndex;
-        public final long elapsedMs;
-        public final long sizeBytes;
-        public final String settingLabel;
-
-        public Result(String settingLabel, long sizeBytes, long elapsedMs) {
-            this.settingLabel = settingLabel;
-            this.sizeBytes = sizeBytes;
-            this.elapsedMs = elapsedMs;
-            this.classIndex = new HashMap<>();
-            this.resourceIndex = new HashMap<>();
-        }
     }
 
     private final PrintStream out;
@@ -62,7 +49,7 @@ public class BenchmarkRunner {
         }
 
         if (zopfliIterations == null || zopfliIterations.isEmpty()) {
-            zopfliIterations = List.of(15, 50, 100);
+            zopfliIterations = List.of(7, 15, 100, 1000);
         }
 
         List<BenchmarkCase> cases = new ArrayList<>();
@@ -74,41 +61,39 @@ public class BenchmarkRunner {
         }
 
         List<BenchmarkResult> results = new ArrayList<>();
-        JarReencoder reencoder = new JarReencoder();
 
         if (format == Format.TEXT) {
             out.println("Benchmarking " + inputJar + " (original size: " + originalSize + " bytes)");
         }
 
+        int workerCount = Math.max(1, Math.min(cases.size(), Runtime.getRuntime().availableProcessors()));
+        ExecutorService executor = Executors.newFixedThreadPool(workerCount);
+        List<Future<BenchmarkResult>> futures = new ArrayList<>();
         for (BenchmarkCase benchmarkCase : cases) {
-            Path tempOut = null;
+            futures.add(executor.submit((Callable<BenchmarkResult>) () -> runSingleCase(inputJar, benchmarkCase)));
+        }
+        executor.shutdown();
+
+        for (Future<BenchmarkResult> future : futures) {
             try {
-                tempOut = Files.createTempFile(inputJar.getParent(), "femtojar-bench-", ".jar");
-                long startNs = System.nanoTime();
-                reencoder.rewriteJarBundled(
-                        inputJar,
-                        tempOut,
-                        benchmarkCase.useZopfli,
-                        benchmarkCase.zopfliIterations,
-                        benchmarkCase.bundleResources,
-                        "cli-benchmark");
-                long elapsedNs = System.nanoTime() - startNs;
-                long size = Files.size(tempOut);
-                results.add(new BenchmarkResult(benchmarkCase, size, elapsedNs / 1_000_000));
+                BenchmarkResult result = future.get();
+                results.add(result);
                 if (format == Format.TEXT) {
-                    out.println("  done: " + benchmarkCase.label());
+                    out.println("  done: " + result.benchmarkCase().label());
                 }
-            } catch (IOException ex) {
-                err.println("Benchmark case failed (" + benchmarkCase.label() + "): " + ex.getMessage());
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                err.println("Benchmark interrupted");
                 return 1;
-            } finally {
-                if (tempOut != null) {
-                    try {
-                        Files.deleteIfExists(tempOut);
-                    } catch (IOException ignored) {
-                        // Ignore temp cleanup issues.
-                    }
+            } catch (ExecutionException ex) {
+                Throwable cause = ex.getCause();
+                if (cause instanceof IOException ioEx) {
+                    err.println("Benchmark case failed: " + ioEx.getMessage());
+                } else {
+                    err.println("Benchmark case failed: " + cause.getMessage());
                 }
+                futures.forEach(f -> f.cancel(true));
+                return 1;
             }
         }
 
@@ -120,6 +105,38 @@ public class BenchmarkRunner {
 
         render(format, inputJar, originalSize, results);
         return 0;
+    }
+
+    private BenchmarkResult runSingleCase(Path inputJar, BenchmarkCase benchmarkCase) throws IOException {
+        Path tempOut = null;
+        try {
+            if (inputJar.getParent() != null) {
+                tempOut = Files.createTempFile(inputJar.getParent(), "femtojar-bench-", ".jar");
+            } else {
+                tempOut = Files.createTempFile("femtojar-bench-", ".jar");
+            }
+
+            JarReencoder reencoder = new JarReencoder();
+            long startNs = System.nanoTime();
+            reencoder.rewriteJarBundled(
+                    inputJar,
+                    tempOut,
+                    benchmarkCase.useZopfli,
+                    benchmarkCase.zopfliIterations,
+                    benchmarkCase.bundleResources,
+                    "cli-benchmark");
+            long elapsedNs = System.nanoTime() - startNs;
+            long size = Files.size(tempOut);
+            return new BenchmarkResult(benchmarkCase, size, elapsedNs / 1_000_000);
+        } finally {
+            if (tempOut != null) {
+                try {
+                    Files.deleteIfExists(tempOut);
+                } catch (IOException ignored) {
+                    // Ignore temp cleanup issues.
+                }
+            }
+        }
     }
 
     private void render(Format format, Path inputJar, long originalSize, List<BenchmarkResult> results) {
