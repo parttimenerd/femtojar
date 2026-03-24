@@ -54,7 +54,7 @@ public class BenchmarkRunner {
         }
         // Extra default-mode runs with advanced ordering.
         cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, AdvancedOrderingMode.PACKAGE, -1));
-        cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, AdvancedOrderingMode.HILL_CLIMB, 10000));
+        cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, AdvancedOrderingMode.HILL_CLIMB, 1000));
         List<BenchmarkResult> results = new ArrayList<>();
 
         if (format == Format.TEXT) {
