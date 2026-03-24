@@ -150,41 +150,41 @@ public class BenchmarkRunner {
             out.println("- default baseline: `" + defaultConfig.benchmarkCase().label() + "`");
             out.println("- best setting: `" + best.benchmarkCase().label() + "`");
             out.println();
-            out.println("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(bytes) | time vs default(ms) |");
+            out.println("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(%) | time vs default(%) |");
             out.println("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
             for (BenchmarkResult result : results) {
                 long saved = originalSize - result.sizeBytes();
                 double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
-                long sizeDeltaVsDefault = defaultConfig.sizeBytes() - result.sizeBytes();
-                long timeDeltaVsDefault = result.elapsedMs() - defaultConfig.elapsedMs();
-                out.printf("| %s | %d | %d | %.2f | %d | %d | %d |%n",
+                double sizeDeltaPct = defaultConfig.sizeBytes() == 0 ? 0d : ((defaultConfig.sizeBytes() - result.sizeBytes()) * 100.0) / defaultConfig.sizeBytes();
+                double timeDeltaPct = defaultConfig.elapsedMs() == 0 ? 0d : ((result.elapsedMs() - defaultConfig.elapsedMs()) * 100.0) / defaultConfig.elapsedMs();
+                out.printf("| %s | %d | %d | %.2f | %d | %.2f | %.2f |%n",
                         result.benchmarkCase().label(),
                         result.sizeBytes(),
                         saved,
                         savedPct,
                         result.elapsedMs(),
-                        sizeDeltaVsDefault,
-                        timeDeltaVsDefault);
+                        sizeDeltaPct,
+                        timeDeltaPct);
             }
             return;
         }
 
         out.println();
         out.println("Result table (sorted by output size):");
-        out.println("mode                                   size(bytes)   saved(bytes)   saved(%)   time(ms)   size-vs-default(bytes)   time-vs-default(ms)");
+        out.println("mode                                   size(bytes)   saved(bytes)   saved(%)   time(ms)   size-vs-default(%)   time-vs-default(%)");
         for (BenchmarkResult result : results) {
             long saved = originalSize - result.sizeBytes();
             double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
-            long sizeDeltaVsDefault = defaultConfig.sizeBytes() - result.sizeBytes();
-            long timeDeltaVsDefault = result.elapsedMs() - defaultConfig.elapsedMs();
-            out.printf("%-38s %12d %13d %9.2f %10d %24d %21d%n",
+            double sizeDeltaPct = defaultConfig.sizeBytes() == 0 ? 0d : ((defaultConfig.sizeBytes() - result.sizeBytes()) * 100.0) / defaultConfig.sizeBytes();
+            double timeDeltaPct = defaultConfig.elapsedMs() == 0 ? 0d : ((result.elapsedMs() - defaultConfig.elapsedMs()) * 100.0) / defaultConfig.elapsedMs();
+            out.printf("%-38s %12d %13d %9.2f %10d %20.2f %19.2f%n",
                     result.benchmarkCase().label(),
                     result.sizeBytes(),
                     saved,
                     savedPct,
                     result.elapsedMs(),
-                    sizeDeltaVsDefault,
-                    timeDeltaVsDefault);
+                    sizeDeltaPct,
+                    timeDeltaPct);
         }
 
         out.println();

@@ -186,7 +186,7 @@ class MainTest {
         String output = outBytes.toString();
         assertEquals(0, exitCode, "Markdown benchmark should succeed. stderr=" + errBytes);
         assertTrue(output.contains("## femtojar benchmark"), "Markdown header should be present");
-        assertTrue(output.contains("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(bytes) | time vs default(ms) |"),
+        assertTrue(output.contains("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(%) | time vs default(%) |"),
                 "Markdown table header should be present");
         assertTrue(output.contains("| default, resources=off |"), "Markdown table should include default mode");
     }
