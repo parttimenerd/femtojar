@@ -99,7 +99,7 @@ Important:
 | `jars[i].in` | Input JAR path (relative to `${project.build.directory}` if not absolute) | Required per entry |
 | `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
 | `compressionMode` | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
-| `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `true` |
+| `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `false` |
 | `failOnError` | Fail build immediately on rewrite errors. | `true` |
 | `skip` | Skip plugin execution. | `false` |
 

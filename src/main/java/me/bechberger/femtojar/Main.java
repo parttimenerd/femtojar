@@ -188,7 +188,7 @@ public class Main {
         out.println();
         out.println("Defaults:");
         out.println("  compression: default (deflate level=9)");
-        out.println("  resource bundling: enabled");
+        out.println("  resource bundling: disabled");
         out.println("  benchmark modes: default, zopfli, max (each with resources on/off, run in parallel)");
         out.println("  benchmark format: text");
         out.println("  output: in-place if not specified");
@@ -208,7 +208,7 @@ public class Main {
         private Path inputJar;
         private Path outputJar;
         private CompressionMode compressionMode = CompressionMode.DEFAULT;
-        private boolean bundleResources = true;
+        private boolean bundleResources = false;
         private boolean benchmark;
         private BenchmarkFormat benchmarkFormat = BenchmarkFormat.TEXT;
         private boolean showHelp;
