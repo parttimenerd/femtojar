@@ -7,8 +7,8 @@ This script:
 2. Bumps major/minor/patch version
 3. Uses CHANGELOG.md Unreleased section as release notes and rolls it into a versioned entry
 4. Updates root pom.xml, README.md, and example-project/pom.xml
-5. Runs tests and builds artifacts
-6. Optionally deploys with Maven release profile
+5. Runs tests and builds artifacts with Maven release profile
+6. Deploys to Maven repositories
 7. Commits, tags, and optionally pushes
 """
 
@@ -210,10 +210,10 @@ class ReleaseManager:
             raise RuntimeError(f"Command failed: {' '.join(cmd)}")
 
     def run_checks(self, include_its: bool) -> None:
-        self.run_command(["mvn", "test"], "Running unit tests")
+        self.run_command(["mvn", "-P", "release", "test"], "Running unit tests")
         if include_its:
-            self.run_command(["mvn", "-Prun-its", "verify"], "Running integration tests")
-        self.run_command(["mvn", "package", "-DskipTests"], "Building artifacts")
+            self.run_command(["mvn", "-P", "release,run-its", "verify"], "Running integration tests")
+        self.run_command(["mvn", "-P", "release", "package", "-DskipTests"], "Building artifacts")
 
     def deploy(self) -> None:
         self.run_command(["mvn", "clean", "deploy", "-P", "release"], "Deploying release")
@@ -240,7 +240,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--minor", action="store_true", help="Bump minor version (default)")
     parser.add_argument("--patch", action="store_true", help="Bump patch version")
     parser.add_argument("--no-its", action="store_true", help="Skip run-its integration tests")
-    parser.add_argument("--no-deploy", action="store_true", help="Skip Maven deploy")
     parser.add_argument("--no-push", action="store_true", help="Skip git push")
     parser.add_argument("--dry-run", action="store_true", help="Show planned changes only")
     return parser.parse_args()
@@ -279,9 +278,7 @@ def main() -> None:
         manager.update_example_plugin_version(current, new)
 
         manager.run_checks(include_its=not args.no_its)
-
-        if not args.no_deploy:
-            manager.deploy()
+        manager.deploy()
 
         manager.git_commit_tag(new)
 
