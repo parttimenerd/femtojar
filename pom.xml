@@ -200,39 +200,6 @@
                         </configuration>
                     </plugin>
                     <!-- Maven Source Plugin - Required for Maven Central -->
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-source-plugin</artifactId>
-                        <version>3.4.0</version>
-                        <executions>
-                            <execution>
-                                <id>attach-sources</id>
-                                <goals>
-                                    <goal>jar-no-fork</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-
-                    <!-- Maven Javadoc Plugin - Required for Maven Central -->
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-javadoc-plugin</artifactId>
-                        <version>3.12.0</version>
-                        <executions>
-                            <execution>
-                                <id>attach-javadocs</id>
-                                <goals>
-                                    <goal>jar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <doclint>none</doclint>
-                            <quiet>true</quiet>
-                            <release>17</release>
-                        </configuration>
-                    </plugin>
                 </plugins>
             </build>
         </profile>
@@ -272,7 +239,39 @@
                             <waitUntil>uploaded</waitUntil>
                         </configuration>
                     </plugin>
+ <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.4.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
 
+                    <!-- Maven Javadoc Plugin - Required for Maven Central -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.12.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <doclint>none</doclint>
+                            <quiet>true</quiet>
+                            <release>17</release>
+                        </configuration>
+                    </plugin>
                 </plugins>
             </build>
         </profile>
