@@ -179,6 +179,8 @@ Patch release without deploy:
 
 Default release flow:
 
+- require release notes in `CHANGELOG.md` under `## [Unreleased]`
+- roll `## [Unreleased]` notes into `## [<version>] - <YYYY-MM-DD>`
 - bump version in root `pom.xml`
 - update version references in `README.md`
 - update femtojar plugin version in `example-project/pom.xml`

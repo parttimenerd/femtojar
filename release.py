@@ -5,20 +5,22 @@ Bump femtojar version and prepare a release.
 This script:
 1. Reads current version from pom.xml
 2. Bumps major/minor/patch version
-3. Updates root pom.xml, README.md, and example-project/pom.xml
-4. Runs tests and builds artifacts
-5. Optionally deploys with Maven release profile
-6. Commits, tags, and optionally pushes
+3. Uses CHANGELOG.md Unreleased section as release notes and rolls it into a versioned entry
+4. Updates root pom.xml, README.md, and example-project/pom.xml
+5. Runs tests and builds artifacts
+6. Optionally deploys with Maven release profile
+7. Commits, tags, and optionally pushes
 """
 
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Tuple
 
 
 class ReleaseManager:
@@ -27,6 +29,13 @@ class ReleaseManager:
         self.pom_xml = project_root / "pom.xml"
         self.readme = project_root / "README.md"
         self.example_pom = project_root / "example-project" / "pom.xml"
+        self.changelog = project_root / "CHANGELOG.md"
+        self._release_files = [
+            self.pom_xml,
+            self.readme,
+            self.example_pom,
+            self.changelog,
+        ]
 
     def get_current_version(self) -> str:
         content = self.pom_xml.read_text(encoding="utf-8")
@@ -82,6 +91,117 @@ class ReleaseManager:
         updated = re.sub(pattern, r"\g<1>" + new + r"\g<2>", content, flags=re.DOTALL)
         self.example_pom.write_text(updated, encoding="utf-8")
 
+    def update_changelog_for_release(self, new_version: str) -> None:
+        if not self.changelog.exists():
+            raise FileNotFoundError("CHANGELOG.md not found")
+
+        content = self.changelog.read_text(encoding="utf-8")
+        lines = content.splitlines()
+
+        unreleased_idx = None
+        for idx, line in enumerate(lines):
+            if line.strip() == "## [Unreleased]":
+                unreleased_idx = idx
+                break
+
+        if unreleased_idx is None:
+            raise ValueError("CHANGELOG.md must contain a '## [Unreleased]' section")
+
+        next_section_idx = len(lines)
+        for idx in range(unreleased_idx + 1, len(lines)):
+            if lines[idx].startswith("## "):
+                next_section_idx = idx
+                break
+
+        unreleased_body = "\n".join(lines[unreleased_idx + 1:next_section_idx]).strip()
+        if not unreleased_body:
+            raise ValueError("CHANGELOG.md Unreleased section is empty; add release notes before releasing")
+
+        release_header = f"## [{new_version}] - {date.today().isoformat()}"
+        unreleased_template = "\n".join([
+            "### Added",
+            "",
+            "### Changed",
+            "",
+            "### Deprecated",
+            "",
+            "### Removed",
+            "",
+            "### Fixed",
+            "",
+            "### Security",
+            "",
+        ])
+        replacement = f"## [Unreleased]\n\n{unreleased_template}\n{release_header}"
+
+        updated = content.replace("## [Unreleased]", replacement, 1)
+        updated = self._update_changelog_compare_links(updated, new_version)
+        self.changelog.write_text(updated, encoding="utf-8")
+
+    @staticmethod
+    def _update_changelog_compare_links(content: str, new_version: str) -> str:
+        unreleased_link_re = re.compile(r"^\[Unreleased\]:\s+(?P<url>.+)/compare/v(?P<old>[\d.]+)\.\.\.HEAD\s*$", re.MULTILINE)
+        match = unreleased_link_re.search(content)
+        if not match:
+            return content
+
+        base_url = match.group("url")
+        old_version = match.group("old")
+        new_links = (
+            f"[Unreleased]: {base_url}/compare/v{new_version}...HEAD\n"
+            f"[{new_version}]: {base_url}/compare/v{old_version}...v{new_version}"
+        )
+        return unreleased_link_re.sub(new_links, content, count=1)
+
+    def preview_changelog_release(self, new_version: str) -> str:
+        if not self.changelog.exists():
+            return "- CHANGELOG.md not found"
+
+        lines = self.changelog.read_text(encoding="utf-8").splitlines()
+
+        unreleased_idx = None
+        for idx, line in enumerate(lines):
+            if line.strip() == "## [Unreleased]":
+                unreleased_idx = idx
+                break
+
+        if unreleased_idx is None:
+            return "- CHANGELOG.md missing '## [Unreleased]' section"
+
+        next_section_idx = len(lines)
+        for idx in range(unreleased_idx + 1, len(lines)):
+            if lines[idx].startswith("## "):
+                next_section_idx = idx
+                break
+
+        body = "\n".join(lines[unreleased_idx + 1:next_section_idx]).strip()
+        if not body:
+            return "- CHANGELOG.md Unreleased is empty"
+
+        preview_lines = [
+            f"- CHANGELOG.md: create ## [{new_version}] - {date.today().isoformat()} from current Unreleased notes",
+            "- CHANGELOG.md: reset Unreleased to standard section template",
+        ]
+
+        non_empty_lines = [line for line in body.splitlines() if line.strip()][:4]
+        if non_empty_lines:
+            preview_lines.append("- Changelog content preview:")
+            for line in non_empty_lines:
+                preview_lines.append(f"  {line}")
+        return "\n".join(preview_lines)
+
+    def snapshot_files(self) -> Dict[Path, str]:
+        snapshots: Dict[Path, str] = {}
+        for file in self._release_files:
+            if file.exists():
+                snapshots[file] = file.read_text(encoding="utf-8")
+        return snapshots
+
+    @staticmethod
+    def restore_snapshots(snapshots: Dict[Path, str]) -> None:
+        for path, content in snapshots.items():
+            path.write_text(content, encoding="utf-8")
+
     def run_command(self, cmd: list[str], desc: str) -> None:
         print(f"\n-> {desc}")
         print("   $ " + " ".join(cmd))
@@ -103,6 +223,7 @@ class ReleaseManager:
             "pom.xml",
             "README.md",
             "example-project/pom.xml",
+            "CHANGELOG.md",
         ]
         self.run_command(["git", "add", *files], "Staging release files")
         self.run_command(["git", "commit", "-m", f"Release {version}"], "Creating release commit")
@@ -147,9 +268,12 @@ def main() -> None:
         print("- pom.xml")
         print("- README.md")
         print("- example-project/pom.xml")
+        print(manager.preview_changelog_release(new))
         return
 
+    snapshots = manager.snapshot_files()
     try:
+        manager.update_changelog_for_release(new)
         manager.update_pom_version(current, new)
         manager.update_readme_versions(current, new)
         manager.update_example_plugin_version(current, new)
@@ -170,8 +294,9 @@ def main() -> None:
         print(f"- target/femtojar-{new}.jar")
         print(f"- target/femtojar-{new}-cli.jar")
     except Exception as exc:
+        manager.restore_snapshots(snapshots)
         print(f"\nRelease failed: {exc}")
-        print("You may want to revert local version changes manually if needed.")
+        print("Local release edits were reverted automatically.")
         sys.exit(1)
 
 
