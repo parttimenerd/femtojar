@@ -136,40 +136,55 @@ public class BenchmarkRunner {
 
     private void render(Format format, Path inputJar, long originalSize, List<BenchmarkResult> results) {
         BenchmarkResult best = results.get(0);
+        BenchmarkResult defaultConfig = results.stream()
+                .filter(result -> result.benchmarkCase().mode() == CompressionMode.DEFAULT
+                        && result.benchmarkCase().bundleResources())
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Benchmark results missing default baseline"));
+
         if (format == Format.MARKDOWN) {
             out.println("## femtojar benchmark");
             out.println();
             out.println("- input: `" + inputJar + "`");
             out.println("- original size: `" + originalSize + "` bytes");
+            out.println("- default baseline: `" + defaultConfig.benchmarkCase().label() + "`");
             out.println("- best setting: `" + best.benchmarkCase().label() + "`");
             out.println();
-            out.println("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) |");
-            out.println("| --- | ---: | ---: | ---: | ---: |");
+            out.println("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(bytes) | time vs default(ms) |");
+            out.println("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
             for (BenchmarkResult result : results) {
                 long saved = originalSize - result.sizeBytes();
                 double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
-                out.printf("| %s | %d | %d | %.2f | %d |%n",
+                long sizeDeltaVsDefault = defaultConfig.sizeBytes() - result.sizeBytes();
+                long timeDeltaVsDefault = result.elapsedMs() - defaultConfig.elapsedMs();
+                out.printf("| %s | %d | %d | %.2f | %d | %d | %d |%n",
                         result.benchmarkCase().label(),
                         result.sizeBytes(),
                         saved,
                         savedPct,
-                        result.elapsedMs());
+                        result.elapsedMs(),
+                        sizeDeltaVsDefault,
+                        timeDeltaVsDefault);
             }
             return;
         }
 
         out.println();
         out.println("Result table (sorted by output size):");
-        out.println("mode                                   size(bytes)   saved(bytes)   saved(%)   time(ms)");
+        out.println("mode                                   size(bytes)   saved(bytes)   saved(%)   time(ms)   size-vs-default(bytes)   time-vs-default(ms)");
         for (BenchmarkResult result : results) {
             long saved = originalSize - result.sizeBytes();
             double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
-            out.printf("%-38s %12d %13d %9.2f %10d%n",
+            long sizeDeltaVsDefault = defaultConfig.sizeBytes() - result.sizeBytes();
+            long timeDeltaVsDefault = result.elapsedMs() - defaultConfig.elapsedMs();
+            out.printf("%-38s %12d %13d %9.2f %10d %24d %21d%n",
                     result.benchmarkCase().label(),
                     result.sizeBytes(),
                     saved,
                     savedPct,
-                    result.elapsedMs());
+                    result.elapsedMs(),
+                    sizeDeltaVsDefault,
+                    timeDeltaVsDefault);
         }
 
         out.println();
