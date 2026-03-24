@@ -32,6 +32,15 @@ public class ReencodeJarsMojo extends AbstractMojo {
     private boolean bundleResources;
 
     /**
+     * Number of random orderings to try for class files to find best compression.
+     * If -1, uses lexical ordering only (default, fast).
+     * If > 0, tries this many random orderings and picks the best.
+     * Higher values may improve compression but take longer.
+     */
+    @Parameter(property = "femtojar.randomizeIterations", defaultValue = "-1")
+    private int randomizeIterations;
+
+    /**
      * List of JAR entries to reencode. Each entry has an input path {@code <in>}
      * and optional output path {@code <out>}. If no output path is specified,
      * the input JAR is rewritten in place.
@@ -101,7 +110,8 @@ public class ReencodeJarsMojo extends AbstractMojo {
                         compressionMode.useZopfli(),
                         compressionMode.zopfliIterations(),
                         bundleResources,
-                        femtojarVersion);
+                        femtojarVersion,
+                        randomizeIterations);
                 } else {
                     long originalSize = Files.size(sourceJarPath);
                     reencoder.rewriteJarBundled(
@@ -110,7 +120,8 @@ public class ReencodeJarsMojo extends AbstractMojo {
                         compressionMode.useZopfli(),
                         compressionMode.zopfliIterations(),
                         bundleResources,
-                        femtojarVersion);
+                        femtojarVersion,
+                        randomizeIterations);
                     long newSize = Files.size(targetJarPath);
                     result = new JarReencoder.ReencodeResult(originalSize, newSize);
                 }

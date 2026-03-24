@@ -130,13 +130,15 @@ jobs:
 
       - name: Get latest jstall release
         run: |
-          LATEST_RELEASE=$(curl -s https://api.github.com/repos/parttimenerd/jstall/releases/latest)
-          MINIMAL_URL=$(echo "$LATEST_RELEASE" | grep -o '"browser_download_url":"[^"]*jstall-all-minimal[^"]*"' | cut -d'"' -f4 | head -1)
-          FULL_URL=$(echo "$LATEST_RELEASE" | grep -o '"browser_download_url":"[^"]*jstall-all[^"]*"' | cut -d'"' -f4 | grep -v minimal | head -1)
+          RELEASE_JSON="$(mktemp)"
+          curl -fsSL https://api.github.com/repos/parttimenerd/jstall/releases/latest -o "$RELEASE_JSON"
+          MINIMAL_URL=$(jq -r '.assets[] | select((.name | test("jstall(-all)?-minimal.*\\.jar$")) or (.name == "jstall-minimal.jar")) | .browser_download_url' "$RELEASE_JSON" | head -1)
+          FULL_URL=$(jq -r '.assets[] | select((((.name | test("jstall(-all)?.*\\.jar$")) and (.name | contains("minimal") | not)) or (.name == "jstall.jar"))) | .browser_download_url' "$RELEASE_JSON" | head -1)
           
           if [ -z "$MINIMAL_URL" ] || [ -z "$FULL_URL" ]; then
             echo "::error::Could not find jstall release artifacts"
-            echo "Latest release: $LATEST_RELEASE" | head -20
+            echo "Release payload excerpt:"
+            head -40 "$RELEASE_JSON"
             exit 1
           fi
           
@@ -147,6 +149,7 @@ jobs:
           curl -L -o jstall-full.jar "$FULL_URL"
           
           ls -lh jstall-*.jar
+          rm -f "$RELEASE_JSON"
 
       - name: Run benchmarks on jstall releases
         run: |
@@ -186,24 +189,39 @@ jobs:
 
       - name: Download condensed-data artifact
         run: |
-          RUN_ID="23245346966"
           REPO="parttimenerd/condensed-data"
+
+          # Find latest successful workflow run
+          RUNS=$(curl -fsSL "https://api.github.com/repos/${REPO}/actions/runs?status=success&per_page=20")
+          RUN_ID=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.conclusion == "success") | .id' | head -1)
+          RUN_URL=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.conclusion == "success") | .html_url' | head -1)
+
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "::error::Could not find a successful workflow run for ${REPO}"
+            exit 1
+          fi
+
+          echo "Using run: $RUN_ID"
+          echo "Run URL: $RUN_URL"
+          echo "CONDENSED_DATA_RUN_URL=$RUN_URL" >> "$GITHUB_ENV"
           
           # Get artifacts list for the run
-          ARTIFACTS=$(curl -s https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts)
+          ARTIFACTS=$(curl -fsSL https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts)
           
-          # Find the download URL for condensed-data.jar
-          DOWNLOAD_URL=$(echo "$ARTIFACTS" | grep -o '"download_url":"[^"]*condensed-data\.jar[^"]*"' | cut -d'"' -f4 | head -1)
+          # Verify the run publishes the expected artifact name.
+          ARTIFACT_NAME=$(echo "$ARTIFACTS" | jq -r '.artifacts[] | select(.name == "condensed-data.jar") | .name' | head -1)
           
-          if [ -z "$DOWNLOAD_URL" ]; then
+          if [ -z "$ARTIFACT_NAME" ]; then
             echo "::error::Could not find condensed-data.jar artifact in run ${RUN_ID}"
             echo "Available artifacts:"
-            echo "$ARTIFACTS" | grep -o '"name":"[^"]*"' || true
+            echo "$ARTIFACTS" | jq -r '.artifacts[]?.name' | sed 's/^/- /'
             exit 1
           fi
           
+          DOWNLOAD_URL="https://nightly.link/${REPO}/actions/runs/${RUN_ID}/condensed-data.jar.zip"
           echo "Downloading condensed-data.jar from: $DOWNLOAD_URL"
-          curl -L -o condensed-data.jar "$DOWNLOAD_URL"
+          curl -fsSL -L -o condensed-data-artifact.zip "$DOWNLOAD_URL"
+          unzip -p condensed-data-artifact.zip condensed-data.jar > condensed-data.jar
           
           ls -lh condensed-data.jar
 
@@ -216,7 +234,7 @@ jobs:
           {
             echo "## Condensed Data Artifact Benchmark (ubuntu-latest, Java 21)"
             echo
-            echo "Run: https://github.com/parttimenerd/condensed-data/actions/runs/23245346966"
+            echo "Run: ${CONDENSED_DATA_RUN_URL}"
             echo
             cat condensed-data-benchmark-output.md
             echo

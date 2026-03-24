@@ -7,18 +7,21 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Enumeration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Random;
 import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
@@ -58,21 +61,36 @@ public class JarReencoder {
     * [int indexSize][int classBlobOffset][indexBytes][classBlobBytes].
     * A custom classloader is injected to load classes at runtime.
      *
-     * @param jarPath            path to the JAR to re-encode
-     * @param useZopfli          if true, use Zopfli compression; if false, use Deflater level 9
-     * @param zopfliIterations   number of iterations for Zopfli (ignored if useZopfli=false)
+     * @param jarPath             path to the JAR to re-encode
+     * @param useZopfli           if true, use Zopfli compression; if false, use Deflater level 9
+     * @param zopfliIterations    number of iterations for Zopfli (ignored if useZopfli=false)
+     * @param bundleResources     if true, bundle non-META-INF resources
+     * @param randomizeIterations if > 0, try this many random orderings to find best compression; -1 uses lexical order only
      * @return ReencodeResult with original and new sizes
      */
     public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
                                                  int zopfliIterations,
-                                                 boolean bundleResources) throws IOException {
-        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources, detectFemtojarVersion());
+                                                 boolean bundleResources,
+                                                 int randomizeIterations) throws IOException {
+        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
+            detectFemtojarVersion(), randomizeIterations, null);
     }
 
     public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
                                                  int zopfliIterations,
                                                  boolean bundleResources,
-                                                 String femtojarVersion) throws IOException {
+                                                 String femtojarVersion,
+                                                 int randomizeIterations) throws IOException {
+        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
+            femtojarVersion, randomizeIterations, null);
+        }
+
+        public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
+                             int zopfliIterations,
+                             boolean bundleResources,
+                             String femtojarVersion,
+                             int randomizeIterations,
+                             PrintStream logger) throws IOException {
         Objects.requireNonNull(jarPath, "jarPath");
         if (!Files.exists(jarPath) || !Files.isRegularFile(jarPath)) {
             throw new IOException("JAR file does not exist: " + jarPath);
@@ -81,7 +99,8 @@ public class JarReencoder {
         long originalSize = Files.size(jarPath);
         Path tempFile = Files.createTempFile(jarPath.getParent(), jarPath.getFileName().toString(), ".tmp");
         try {
-            rewriteJarBundled(jarPath, tempFile, useZopfli, zopfliIterations, bundleResources, femtojarVersion);
+            rewriteJarBundled(jarPath, tempFile, useZopfli, zopfliIterations, bundleResources,
+                    femtojarVersion, randomizeIterations, logger);
             long newSize = Files.size(tempFile);
             moveIntoPlace(tempFile, jarPath);
             return new ReencodeResult(originalSize, newSize);
@@ -91,14 +110,47 @@ public class JarReencoder {
         }
     }
 
+    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
+                                                 int zopfliIterations,
+                                                 boolean bundleResources,
+                                                 String femtojarVersion) throws IOException {
+        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources, femtojarVersion, -1);
+    }
+
+    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
+                                                 int zopfliIterations,
+                                                 boolean bundleResources) throws IOException {
+        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources, detectFemtojarVersion(), -1);
+    }
+
     /**
-     * Rewrites a JAR file with bundled class compression.
-     * Concatenates all .class files, compresses them (with Zopfli or Deflater),
-     * and writes the result alongside a custom classloader.
+     * Legacy overload - uses lexical ordering (randomizeIterations=-1).
      */
     void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
                            int zopfliIterations, boolean bundleResources,
                            String femtojarVersion) throws IOException {
+        rewriteJarBundled(sourceJar, targetJar, useZopfli, zopfliIterations, bundleResources, femtojarVersion, -1, null);
+    }
+
+    void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
+                           int zopfliIterations, boolean bundleResources,
+                           String femtojarVersion, int randomizeIterations) throws IOException {
+        rewriteJarBundled(sourceJar, targetJar, useZopfli, zopfliIterations, bundleResources,
+                femtojarVersion, randomizeIterations, null);
+    }
+
+    /**
+     * Rewrites a JAR file with bundled class compression, optionally trying multiple random orderings.
+     * Concatenates all .class files, compresses them (with Zopfli or Deflater),
+     * and writes the result alongside a custom classloader.
+     * 
+     * @param randomizeIterations if > 0, tries this many random orderings to find the best compression.
+     *                            if -1, uses lexical ordering only.
+     * @param logger optional PrintStream for verbose logging
+     */
+    void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
+                           int zopfliIterations, boolean bundleResources,
+                           String femtojarVersion, int randomizeIterations, PrintStream logger) throws IOException {
         try (JarFile jarFile = new JarFile(sourceJar.toFile())) {
             if (isAlreadyBundledJar(jarFile)) {
                 Files.copy(sourceJar, targetJar, StandardCopyOption.REPLACE_EXISTING);
@@ -116,7 +168,6 @@ public class JarReencoder {
             }
 
             // Separate .class entries from resources
-            ByteArrayOutputStream blob = new ByteArrayOutputStream();
             Map<String, int[]> classIndex = new HashMap<>();
             Map<String, int[]> resourceIndex = new HashMap<>();
             Map<String, byte[]> classEntries = new HashMap<>();
@@ -155,10 +206,13 @@ public class JarReencoder {
                 }
             }
 
-            // Stable lexical ordering improves cross-entry redundancy for the single compressed blob.
-            List<String> classNames = new ArrayList<>(classEntries.keySet());
-            classNames.sort(String::compareTo);
-            for (String classEntryName : classNames) {
+            // Find best ordering of classes (lexical or randomized)
+            List<String> bestClassOrder = findBestClassOrdering(new ArrayList<>(classEntries.keySet()),
+                    classEntries, bundledResourceEntries, useZopfli, zopfliIterations, randomizeIterations, logger);
+
+            // Build blob with best ordering
+            ByteArrayOutputStream blob = new ByteArrayOutputStream();
+            for (String classEntryName : bestClassOrder) {
                 byte[] content = classEntries.get(classEntryName);
                 String className = classEntryName.substring(0, classEntryName.length() - 6).replace('/', '.');
                 int offset = blob.size();
@@ -224,7 +278,7 @@ public class JarReencoder {
     /**
      * Compresses using Zopfli with ZLIB format.
      */
-    private byte[] compressWithZopfli(byte[] data, int iterations) throws IOException {
+    private static byte[] compressWithZopfli(byte[] data, int iterations) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Options options = new Options(Options.OutputFormat.ZLIB, Options.BlockSplitting.FIRST, iterations);
         Zopfli zopfli = new Zopfli(8 * 1024 * 1024); // 8MB master block size
@@ -235,7 +289,7 @@ public class JarReencoder {
     /**
      * Compresses using standard Deflater with ZLIB wrapping.
      */
-    private byte[] compressWithDeflater(byte[] data) throws IOException {
+    private static byte[] compressWithDeflater(byte[] data) throws IOException {
         Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION, false);
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream(data.length);
@@ -276,7 +330,7 @@ public class JarReencoder {
         return baos.toByteArray();
     }
 
-    private byte[] packBlob(byte[] indexData, byte[] classBlobData) throws IOException {
+    private static byte[] packBlob(byte[] indexData, byte[] classBlobData) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream(indexData.length + classBlobData.length + 4);
         try (DataOutputStream dos = new DataOutputStream(baos)) {
             dos.writeInt(indexData.length);
@@ -470,6 +524,140 @@ public class JarReencoder {
         } catch (AtomicMoveNotSupportedException ignored) {
             Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
         }
+    }
+
+    /**
+     * Finds the best ordering of class files for compression by trying multiple orderings.
+     * 
+     * @param classNames list of class file names
+     * @param classEntries map from class name to content
+     * @param bundledResourceEntries map from resource name to content
+     * @param useZopfli whether to use Zopfli compression
+     * @param zopfliIterations number of iterations for Zopfli
+     * @param randomizeIterations if > 0, tries this many random orderings; if -1, only uses lexical order
+     * @param logger optional PrintStream for verbose logging; if null, no logging
+     * @return the best ordering (lexical if randomizeIterations <= 0)
+     */
+    private static List<String> findBestClassOrdering(List<String> classNames,
+                                                      Map<String, byte[]> classEntries,
+                                                      Map<String, byte[]> bundledResourceEntries,
+                                                      boolean useZopfli,
+                                                      int zopfliIterations,
+                                                      int randomizeIterations,
+                                                      PrintStream logger) throws IOException {
+        // Always start with lexical ordering
+        List<String> bestOrder = new ArrayList<>(classNames);
+        bestOrder.sort(String::compareTo);
+        
+        // If randomizeIterations <= 0, just return lexical ordering
+        if (randomizeIterations <= 0) {
+            return bestOrder;
+        }
+
+        // Measure initial blob size with lexical ordering
+        long bestSize = measureBlobSize(bestOrder, classEntries, bundledResourceEntries, useZopfli, zopfliIterations);
+        if (logger != null) {
+            logger.println("  [0/randomization] lexical order: " + bestSize + " bytes");
+        }
+        
+        // Try random orderings
+        Random random = new Random();
+        for (int i = 0; i < randomizeIterations; i++) {
+            List<String> randomOrder = new ArrayList<>(classNames);
+            Collections.shuffle(randomOrder, random);
+            long size = measureBlobSize(randomOrder, classEntries, bundledResourceEntries, useZopfli, zopfliIterations);
+            
+            if (logger != null) {
+                String marker = size < bestSize ? " (new best)" : "";
+                logger.println("  [" + (i + 1) + "/" + randomizeIterations + "] random order: " + size + " bytes" + marker);
+            }
+            
+            if (size < bestSize) {
+                bestSize = size;
+                bestOrder = randomOrder;
+            }
+        }
+        if (logger != null) {
+            logger.println("  [done] best randomized size: " + bestSize + " bytes");
+        }
+        
+        return bestOrder;
+    }
+
+    /**
+     * Measures the compressed size of a blob with the given class ordering.
+     */
+    private static long measureBlobSize(List<String> classOrder,
+                                        Map<String, byte[]> classEntries,
+                                        Map<String, byte[]> bundledResourceEntries,
+                                        boolean useZopfli,
+                                        int zopfliIterations) throws IOException {
+        ByteArrayOutputStream blob = new ByteArrayOutputStream();
+        Map<String, int[]> classIndex = new HashMap<>();
+        Map<String, int[]> resourceIndex = new HashMap<>();
+        
+        // Build blob in given order
+        for (String classEntryName : classOrder) {
+            byte[] content = classEntries.get(classEntryName);
+            int offset = blob.size();
+            blob.write(content);
+            String className = classEntryName.substring(0, classEntryName.length() - 6).replace('/', '.');
+            classIndex.put(className, new int[]{offset, content.length});
+        }
+        
+        // Add bundled resources in lexical order
+        if (!bundledResourceEntries.isEmpty()) {
+            List<String> resourceNames = new ArrayList<>(bundledResourceEntries.keySet());
+            resourceNames.sort(String::compareTo);
+            for (String resourceName : resourceNames) {
+                byte[] content = bundledResourceEntries.get(resourceName);
+                int offset = blob.size();
+                blob.write(content);
+                resourceIndex.put(resourceName, new int[]{offset, content.length});
+            }
+        }
+        
+        // Serialize index and pack blob
+        byte[] indexData = serializeIndexForMeasure(classIndex, resourceIndex, blob.size());
+        byte[] packedBlob = packBlob(indexData, blob.toByteArray());
+        
+        // Compress and return size
+        byte[] compressed;
+        if (useZopfli) {
+            compressed = compressWithZopfli(packedBlob, zopfliIterations);
+        } else {
+            compressed = compressWithDeflater(packedBlob);
+        }
+        
+        return compressed.length;
+    }
+    
+    /**
+     * Helper version of serializeIndex for measurement purposes.
+     */
+    private static byte[] serializeIndexForMeasure(Map<String, int[]> classIndex,
+                                                    Map<String, int[]> resourceIndex,
+                                                    int totalUncompressedSize) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (DataOutputStream dos = new DataOutputStream(baos)) {
+            dos.writeInt(1); // format version
+            dos.writeInt(classIndex.size());
+            for (Map.Entry<String, int[]> entry : classIndex.entrySet()) {
+                dos.writeUTF(entry.getKey());
+                dos.writeInt(entry.getValue()[0]); // offset
+                dos.writeInt(entry.getValue()[1]); // length
+            }
+
+            dos.writeInt(resourceIndex.size());
+            for (Map.Entry<String, int[]> entry : resourceIndex.entrySet()) {
+                dos.writeUTF(entry.getKey());
+                dos.writeInt(entry.getValue()[0]); // offset
+                dos.writeInt(entry.getValue()[1]); // length
+            }
+
+            dos.writeInt(totalUncompressedSize);
+        }
+        return baos.toByteArray();
     }
 
     public record ReencodeResult(long originalSize, long newSize) {

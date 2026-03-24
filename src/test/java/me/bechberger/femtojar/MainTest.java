@@ -1,6 +1,5 @@
 package me.bechberger.femtojar;
 
-import me.bechberger.femtojar.fixture.CliExecApp;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
@@ -240,7 +239,7 @@ class MainTest {
             manifest.write(zipOut);
             zipOut.closeEntry();
 
-            byte[] classBytes = readClassBytes(CliExecApp.class);
+            byte[] classBytes = readClassBytes("me.bechberger.femtojar.fixture.CliExecApp");
             ZipEntry classEntry = new ZipEntry("me/bechberger/femtojar/fixture/CliExecApp.class");
             zipOut.putNextEntry(classEntry);
             zipOut.write(classBytes);
@@ -255,11 +254,11 @@ class MainTest {
         }
     }
 
-    private static byte[] readClassBytes(Class<?> clazz) throws IOException {
-        String resourceName = clazz.getName().replace('.', '/') + ".class";
-        try (InputStream in = clazz.getClassLoader().getResourceAsStream(resourceName)) {
+    private static byte[] readClassBytes(String className) throws IOException {
+        String resourceName = className.replace('.', '/') + ".class";
+        try (InputStream in = MainTest.class.getClassLoader().getResourceAsStream(resourceName)) {
             if (in == null) {
-                throw new IOException("Class bytes not found for " + clazz.getName());
+                throw new IOException("Class bytes not found for " + className);
             }
             return in.readAllBytes();
         }

@@ -49,8 +49,13 @@ public class BenchmarkRunner {
 
         List<BenchmarkCase> cases = new ArrayList<>();
         for (CompressionMode mode : List.of(CompressionMode.DEFAULT, CompressionMode.ZOPFLI, CompressionMode.MAX)) {
-            cases.add(new BenchmarkCase(mode, false));
-            cases.add(new BenchmarkCase(mode, true));
+            cases.add(new BenchmarkCase(mode, false, -1));
+            cases.add(new BenchmarkCase(mode, true, -1));
+        }
+        // Extra default-mode runs with randomized class ordering.
+        for (int randomizeIterations : List.of(50, 200)) {
+            cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, randomizeIterations));
+            cases.add(new BenchmarkCase(CompressionMode.DEFAULT, true, randomizeIterations));
         }
 
         List<BenchmarkResult> results = new ArrayList<>();
@@ -117,7 +122,8 @@ public class BenchmarkRunner {
                     benchmarkCase.mode.useZopfli(),
                     benchmarkCase.mode.zopfliIterations(),
                     benchmarkCase.bundleResources,
-                    "cli-benchmark");
+                    "cli-benchmark",
+                    benchmarkCase.randomizeIterations);
             long elapsedNs = System.nanoTime() - startNs;
             long size = Files.size(tempOut);
             long elapsedMs = elapsedNs / 1_000_000;
@@ -138,7 +144,8 @@ public class BenchmarkRunner {
         BenchmarkResult best = results.get(0);
         BenchmarkResult defaultConfig = results.stream()
                 .filter(result -> result.benchmarkCase().mode() == CompressionMode.DEFAULT
-                        && result.benchmarkCase().bundleResources())
+                && result.benchmarkCase().bundleResources()
+                && result.benchmarkCase().randomizeIterations() == -1)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Benchmark results missing default baseline"));
 
@@ -191,11 +198,12 @@ public class BenchmarkRunner {
         out.println("Best setting: " + best.benchmarkCase().label());
     }
 
-    private record BenchmarkCase(CompressionMode mode, boolean bundleResources) {
+    private record BenchmarkCase(CompressionMode mode, boolean bundleResources, int randomizeIterations) {
         private String label() {
             String modeLabel = mode.cliValue();
             String resources = bundleResources ? "resources=on" : "resources=off";
-            return modeLabel + ", " + resources;
+            String randomizeLabel = randomizeIterations > 0 ? ", randomize=" + randomizeIterations : "";
+            return modeLabel + ", " + resources + randomizeLabel;
         }
     }
 
