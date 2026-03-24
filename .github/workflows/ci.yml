@@ -78,11 +78,11 @@ jobs:
 
       - name: Run femtojar benchmark on example project
         run: |
-          CLI_JAR="$(find target -maxdepth 1 -type f -name '*-cli.jar' | head -n 1)"
+          CLI_JAR="$(find target -maxdepth 1 -type f -name 'femtojar.jar')"
           EXAMPLE_JAR="example-project/target/demo-app-1.0-SNAPSHOT.jar"
 
           if [ -z "${CLI_JAR}" ]; then
-            echo "::error::No CLI jar found in target/."
+            echo "::error::No CLI jar found in target/. Expected 'femtojar.jar'."
             ls -la target || true
             exit 1
           fi
