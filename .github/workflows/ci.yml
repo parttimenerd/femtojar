@@ -73,8 +73,8 @@ jobs:
       - name: Verify optimized jar manifest
         working-directory: example-project
         run: |
-          unzip -p target/demo-app-1.0-SNAPSHOT.jar META-INF/MANIFEST.MF | grep '^Main-Class: me.bechberger.femtojar.rt.BundleBootstrap'
-          unzip -p target/demo-app-1.0-SNAPSHOT.jar META-INF/MANIFEST.MF | grep '^X-Original-Main-Class:'
+          unzip -p target/demo-app-optimized.jar META-INF/MANIFEST.MF | grep '^Main-Class: me.bechberger.femtojar.rt.BundleBootstrap'
+          unzip -p target/demo-app-optimized.jar META-INF/MANIFEST.MF | grep '^X-Original-Main-Class:'
 
       - name: Run femtojar benchmark on example project
         run: |
@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: example-demo-app
-          path: example-project/target/demo-app-1.0-SNAPSHOT.jar
+          path: example-project/target/demo-app-optimized.jar
           retention-days: 14
 
   release-build:
