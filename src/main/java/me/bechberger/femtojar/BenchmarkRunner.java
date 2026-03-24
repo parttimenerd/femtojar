@@ -49,15 +49,12 @@ public class BenchmarkRunner {
 
         List<BenchmarkCase> cases = new ArrayList<>();
         for (CompressionMode mode : List.of(CompressionMode.DEFAULT, CompressionMode.ZOPFLI, CompressionMode.MAX)) {
-            cases.add(new BenchmarkCase(mode, false, -1));
-            cases.add(new BenchmarkCase(mode, true, -1));
+            cases.add(new BenchmarkCase(mode, false, null, -1));
+            cases.add(new BenchmarkCase(mode, true, null, -1));
         }
-        // Extra default-mode runs with randomized class ordering.
-        for (int randomizeIterations : List.of(50, 200)) {
-            cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, randomizeIterations));
-            cases.add(new BenchmarkCase(CompressionMode.DEFAULT, true, randomizeIterations));
-        }
-
+        // Extra default-mode runs with advanced ordering.
+        cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, AdvancedOrderingMode.PACKAGE, -1));
+        cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, AdvancedOrderingMode.HILL_CLIMB, 10000));
         List<BenchmarkResult> results = new ArrayList<>();
 
         if (format == Format.TEXT) {
@@ -123,7 +120,8 @@ public class BenchmarkRunner {
                     benchmarkCase.mode.zopfliIterations(),
                     benchmarkCase.bundleResources,
                     "cli-benchmark",
-                    benchmarkCase.randomizeIterations);
+                    benchmarkCase.advancedMode,
+                    benchmarkCase.advancedIterations);
             long elapsedNs = System.nanoTime() - startNs;
             long size = Files.size(tempOut);
             long elapsedMs = elapsedNs / 1_000_000;
@@ -145,9 +143,15 @@ public class BenchmarkRunner {
         BenchmarkResult defaultConfig = results.stream()
                 .filter(result -> result.benchmarkCase().mode() == CompressionMode.DEFAULT
                 && result.benchmarkCase().bundleResources()
-                && result.benchmarkCase().randomizeIterations() == -1)
+                && result.benchmarkCase().advancedMode() == null)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("Benchmark results missing default baseline"));
+        double bestSizeDeltaPct = defaultConfig.sizeBytes() == 0
+            ? 0d
+            : ((defaultConfig.sizeBytes() - best.sizeBytes()) * 100.0) / defaultConfig.sizeBytes();
+        double bestTimeDeltaPct = defaultConfig.elapsedMs() == 0
+            ? 0d
+            : ((best.elapsedMs() - defaultConfig.elapsedMs()) * 100.0) / defaultConfig.elapsedMs();
 
         if (format == Format.MARKDOWN) {
             out.println("## femtojar benchmark");
@@ -156,6 +160,8 @@ public class BenchmarkRunner {
             out.println("- original size: `" + originalSize + "` bytes");
             out.println("- default baseline: `" + defaultConfig.benchmarkCase().label() + "`");
             out.println("- best setting: `" + best.benchmarkCase().label() + "`");
+            out.printf("- best relative size vs default: `%.2f%%`%n", bestSizeDeltaPct);
+            out.printf("- best relative time vs default: `%.2f%%`%n", bestTimeDeltaPct);
             out.println();
             out.println("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(%) | time vs default(%) |");
             out.println("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
@@ -196,14 +202,22 @@ public class BenchmarkRunner {
 
         out.println();
         out.println("Best setting: " + best.benchmarkCase().label());
+        out.printf("Best relative size vs default: %.2f%%%n", bestSizeDeltaPct);
+        out.printf("Best relative time vs default: %.2f%%%n", bestTimeDeltaPct);
     }
 
-    private record BenchmarkCase(CompressionMode mode, boolean bundleResources, int randomizeIterations) {
+    private record BenchmarkCase(CompressionMode mode, boolean bundleResources,
+                                   AdvancedOrderingMode advancedMode, int advancedIterations) {
         private String label() {
             String modeLabel = mode.cliValue();
             String resources = bundleResources ? "resources=on" : "resources=off";
-            String randomizeLabel = randomizeIterations > 0 ? ", randomize=" + randomizeIterations : "";
-            return modeLabel + ", " + resources + randomizeLabel;
+            String advancedLabel = "";
+            if (advancedMode == AdvancedOrderingMode.PACKAGE) {
+                advancedLabel = ", order=package";
+            } else if (advancedMode == AdvancedOrderingMode.HILL_CLIMB) {
+                advancedLabel = ", hill-climb=" + advancedIterations;
+            }
+            return modeLabel + ", " + resources + advancedLabel;
         }
     }
 

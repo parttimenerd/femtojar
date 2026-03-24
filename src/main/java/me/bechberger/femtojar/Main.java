@@ -57,7 +57,9 @@ public class Main {
                     config.compressionMode.zopfliIterations(),
                         config.bundleResources,
                         "cli",
-                        config.randomizeIterations,
+                        config.advancedMode,
+                        config.advancedIterations,
+                        config.parallel,
                         logger);
             } else {
                 long originalSize = Files.size(inputJar);
@@ -68,7 +70,9 @@ public class Main {
                     config.compressionMode.zopfliIterations(),
                         config.bundleResources,
                         "cli",
-                        config.randomizeIterations,
+                        config.advancedMode,
+                        config.advancedIterations,
+                        config.parallel,
                         logger);
                 long newSize = Files.size(outputJar);
                 result = new JarReencoder.ReencodeResult(originalSize, newSize);
@@ -141,13 +145,22 @@ public class Main {
                     config.bundleResources = false;
                     i++;
                 }
-                case "--randomize-iterations" -> {
-                    i = requireValue(args, i, "--randomize-iterations");
+                case "--advanced-mode" -> {
+                    i = requireValue(args, i, "--advanced-mode");
+                    config.advancedMode = AdvancedOrderingMode.parse(args[i]);
+                    i++;
+                }
+                case "--advanced-iterations" -> {
+                    i = requireValue(args, i, "--advanced-iterations");
                     try {
-                        config.randomizeIterations = Integer.parseInt(args[i]);
+                        config.advancedIterations = Integer.parseInt(args[i]);
                     } catch (NumberFormatException ex) {
-                        throw new IllegalArgumentException("Invalid value for --randomize-iterations: " + args[i]);
+                        throw new IllegalArgumentException("Invalid value for --advanced-iterations: " + args[i]);
                     }
+                    i++;
+                }
+                case "--parallel" -> {
+                    config.parallel = true;
                     i++;
                 }
                 case "--verbose", "--rverbose" -> {
@@ -199,15 +212,17 @@ public class Main {
     private static void printUsage(PrintStream out) {
         out.println("femtojar CLI");
         out.println("Usage:");
-        out.println("  femtojar <input.jar> [output.jar] [--compression default|zopfli|max] [--no-bundle-resources] [--randomize-iterations N] [--rverbose]");
-        out.println("  femtojar --in <input.jar> [--out <output.jar>] [--compression default|zopfli|max] [--no-bundle-resources] [--randomize-iterations N] [--rverbose]");
+        out.println("  femtojar <input.jar> [output.jar] [--compression default|zopfli|max] [--no-bundle-resources] [--advanced-mode package|hill-climb] [--advanced-iterations N] [--parallel] [--rverbose]");
+        out.println("  femtojar --in <input.jar> [--out <output.jar>] [--compression default|zopfli|max] [--no-bundle-resources] [--advanced-mode package|hill-climb] [--advanced-iterations N] [--parallel] [--rverbose]");
         out.println("  femtojar --benchmark --in <input.jar> [--benchmark-format text|markdown]");
         out.println("  femtojar --help");
         out.println();
         out.println("Defaults:");
         out.println("  compression: default (deflate level=9)");
         out.println("  resource bundling: disabled");
-        out.println("  randomize iterations: -1 (off; lexical class order)");
+        out.println("  advanced mode: disabled (lexical class order)");
+        out.println("  advanced iterations: -1 (off; only used with hill-climb modes)");
+        out.println("  parallel: disabled");
         out.println("  benchmark modes: default, zopfli, max (each with resources on/off, run in parallel)");
         out.println("  benchmark format: text");
         out.println("  output: in-place if not specified");
@@ -228,7 +243,9 @@ public class Main {
         private Path outputJar;
         private CompressionMode compressionMode = CompressionMode.DEFAULT;
         private boolean bundleResources = false;
-        private int randomizeIterations = -1;
+        private AdvancedOrderingMode advancedMode = null;
+        private int advancedIterations = -1;
+        private boolean parallel = false;
         private boolean verbose = false;
         private boolean benchmark;
         private BenchmarkFormat benchmarkFormat = BenchmarkFormat.TEXT;

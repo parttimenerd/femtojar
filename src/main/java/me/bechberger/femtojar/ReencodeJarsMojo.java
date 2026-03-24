@@ -32,13 +32,25 @@ public class ReencodeJarsMojo extends AbstractMojo {
     private boolean bundleResources;
 
     /**
-     * Number of random orderings to try for class files to find best compression.
-     * If -1, uses lexical ordering only (default, fast).
-     * If > 0, tries this many random orderings and picks the best.
-     * Higher values may improve compression but take longer.
+     * Advanced class ordering mode.
+        * Null/empty = lexical (default). 'package' = package-aware grouping.
+        * 'hill-climb' = swap perturbations starting from package ordering using fast proxy measurement.
      */
-    @Parameter(property = "femtojar.randomizeIterations", defaultValue = "-1")
-    private int randomizeIterations;
+    @Parameter(property = "femtojar.advancedMode")
+    private String advancedMode;
+
+    /**
+        * Number of iterations for hill-climb modes.
+     * Ignored for 'package' mode.
+     */
+    @Parameter(property = "femtojar.advancedIterations", defaultValue = "-1")
+    private int advancedIterations;
+
+        /**
+        * Evaluate random swap candidates in parallel in hill-climb modes.
+        */
+        @Parameter(property = "femtojar.parallel", defaultValue = "false")
+        private boolean parallel;
 
     /**
      * List of JAR entries to reencode. Each entry has an input path {@code <in>}
@@ -94,6 +106,7 @@ public class ReencodeJarsMojo extends AbstractMojo {
             throw new MojoExecutionException("Parameter 'jars' must contain at least one JAR entry");
         }
         String femtojarVersion = getFemtojarVersion();
+        AdvancedOrderingMode parsedMode = parseAdvancedMode();
         for (JarEntry entry : jars) {
             if (entry.getIn() == null || entry.getIn().isBlank()) {
                 throw new MojoExecutionException("Each JAR entry must have an 'in' path");
@@ -111,7 +124,9 @@ public class ReencodeJarsMojo extends AbstractMojo {
                         compressionMode.zopfliIterations(),
                         bundleResources,
                         femtojarVersion,
-                        randomizeIterations);
+                        parsedMode,
+                        advancedIterations,
+                        parallel);
                 } else {
                     long originalSize = Files.size(sourceJarPath);
                     reencoder.rewriteJarBundled(
@@ -121,7 +136,9 @@ public class ReencodeJarsMojo extends AbstractMojo {
                         compressionMode.zopfliIterations(),
                         bundleResources,
                         femtojarVersion,
-                        randomizeIterations);
+                        parsedMode,
+                        advancedIterations,
+                        parallel);
                     long newSize = Files.size(targetJarPath);
                     result = new JarReencoder.ReencodeResult(originalSize, newSize);
                 }
@@ -151,6 +168,13 @@ public class ReencodeJarsMojo extends AbstractMojo {
     private String getFemtojarVersion() {
         String version = ReencodeJarsMojo.class.getPackage().getImplementationVersion();
         return version == null || version.isBlank() ? "unknown" : version;
+    }
+
+    private AdvancedOrderingMode parseAdvancedMode() {
+        if (advancedMode == null || advancedMode.isBlank()) {
+            return null;
+        }
+        return AdvancedOrderingMode.parse(advancedMode);
     }
 
     private Path resolveJarPath(String configuredJar) throws MojoExecutionException {

@@ -1,6 +1,6 @@
 # femtojar
 
-`femtojar` shrinks executable JARs by bundling `.class` files into a single compressed blob and loading them through a tiny bootstrap classloader at runtime.
+femtojar shrinks executable JARs by bundling `.class` files into a single compressed blob and loading them through a tiny bootstrap classloader at runtime.
 
 _It's still an early proof-of-concept, but initial results show promising size reductions of 20-30% on typical shaded/uber JARs._
 
@@ -9,7 +9,7 @@ _It's still an early proof-of-concept, but initial results show promising size r
 - Single-blob class compression for better cross-class redundancy
 - Zopfli compression mode (default) with configurable iterations
 - Deflate fallback mode for faster builds
-- Optional randomization mode to try multiple class orderings and keep the smallest result
+- Optional advanced class ordering (package-aware, hill-climb) for better compression
 - Optional bundling of non-`META-INF/*` resources
 - Maven plugin goal and standalone CLI
 - Integration-test profile (`run-its`) with Maven Invoker fixtures
@@ -21,30 +21,6 @@ Zopfli is great, because it essentially generates more effizient deflate/gz stre
 [Wikipedia](https://en.wikipedia.org/wiki/Zopfli)
 
 More info: https://blog.codinghorror.com/zopfli-optimization-literally-free-bandwidth/
-
-## Randomization Mode
-
-`femtojar` can optionally try multiple class-file orders before creating the final compressed blob.
-
-Why this exists:
-
-- Deflate/Zopfli use a fixed 32KB sliding window.
-- In one large bundled stream, class order affects which repeated byte patterns are still inside that window.
-- A different order can produce slightly smaller output, especially for large shaded JARs.
-
-How it works:
-
-- Default `randomizeIterations=-1`: disabled; use stable lexical class ordering.
-- If `randomizeIterations > 0`:
-- First measure lexical ordering.
-- Then try `randomizeIterations` random class orders.
-- Keep the ordering that yields the smallest compressed blob.
-
-Trade-offs:
-
-- Better size potential, longer build time.
-- Most useful for release builds, CI benchmark runs, or distribution artifacts.
-- Usually not needed for fast local dev builds.
 
 ## Maven Plugin
 
@@ -125,7 +101,9 @@ Important:
 | `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
 | `compressionMode` | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
 | `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `false` |
-| `randomizeIterations` | Class-order search iterations. `-1` disables randomization and uses lexical order; values `> 0` try random orders and keep the smallest output. | `-1` |
+| `advancedMode` | Class ordering strategy: empty (lexical), `package`, or `hill-climb`. | Not set (lexical) |
+| `advancedIterations` | Iterations for hill-climb modes. Ignored for package mode. | `-1` |
+| `parallel` | Evaluate random swap candidates in parallel in hill-climb modes. | `false` |
 | `failOnError` | Fail build immediately on rewrite errors. | `true` |
 | `skip` | Skip plugin execution. | `false` |
 
@@ -164,11 +142,43 @@ CLI options:
 - `--compression <default|zopfli|max>`: compression preset (`default`=deflate, `zopfli`=7 iterations, `max`=100 iterations)
 - `--bundle-resources`: enable resource bundling
 - `--no-bundle-resources`: disable resource bundling
-- `--randomize-iterations <N>`: class-order search iterations (`-1` disables; values `> 0` try random orderings and pick the best)
-- `--rverbose` (or `--verbose`): print randomization iteration logs (size per trial)
-- `--benchmark`: run a non-destructive benchmark matrix in parallel and print size/time comparisons
+- `--advanced-mode <package|hill-climb>`: class ordering strategy (`package` = group by package+size, `hill-climb` = proxy-guided swap perturbations)
+- `--advanced-iterations <N>`: iterations for hill-climb modes
+- `--parallel`: evaluate swap candidates in parallel in hill-climb modes
+- `--rverbose` (or `--verbose`): print ordering iteration logs (size per trial)
+- `--benchmark`: run a non-destructive benchmark matrix in parallel and print size/time comparisons, including best relative improvement vs default
 - `--benchmark-format <text|markdown>`: optional benchmark output format (default: `text`)
 - `-h`, `--help`: show usage
+
+## Advanced Class Ordering
+
+femtojar can optionally reorder class files before creating the compressed blob.
+
+Why this exists:
+
+- Deflate/Zopfli use a fixed 32KB sliding window.
+- In one large bundled stream, class order affects which repeated byte patterns are still inside that window.
+- A smarter order can produce slightly smaller output, especially for large shaded JARs.
+
+Two modes are available:
+
+### Package mode (`--advanced-mode package`)
+
+Groups classes by package, then sorts by file size within each package.
+Classes in the same package share constant-pool strings (package name, common imports),
+so placing them adjacent keeps repeated patterns inside the deflate window.
+Deterministic and fast — no compression measurement needed.
+
+### Hill-climb mode (`--advanced-mode hill-climb --advanced-iterations N`)
+
+Starts from package-aware ordering and makes N random swap perturbations.
+Uses fast deflate (level 1) as a proxy to measure each candidate — so each
+iteration is very cheap (~100x faster than real Zopfli).
+Keeps a swap only if the proxy size improves.
+Best balance of quality and speed.
+
+Optional: add `--parallel` to evaluate multiple random swap candidates per
+iteration and keep the best one.
 
 ## Build and Test
 
