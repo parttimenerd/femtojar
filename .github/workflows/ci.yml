@@ -44,18 +44,8 @@ jobs:
       - name: Build artifacts
         run: mvn package -DskipTests
 
-      - name: Upload reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: reports-${{ matrix.os }}-java${{ matrix.java-version }}
-          path: |
-            target/surefire-reports/
-            target/failsafe-reports/
-          retention-days: 7
-
   example-project:
-    name: Example Project Check
+    name: Example Project Check (Ubuntu, Java 21)
     runs-on: ubuntu-latest
     needs: test-matrix
 
@@ -89,8 +79,13 @@ jobs:
           EXAMPLE_JAR="example-project/target/demo-app-1.0-SNAPSHOT.jar"
           echo "Using CLI jar: ${CLI_JAR}"
           echo "Benchmark target: ${EXAMPLE_JAR}"
-          java -jar "${CLI_JAR}" --benchmark --benchmark-format markdown --in "${EXAMPLE_JAR}" | tee benchmark-output.md
-          cat benchmark-output.md >> "$GITHUB_STEP_SUMMARY"
+          java -jar "${CLI_JAR}" --benchmark --benchmark-format markdown --in "${EXAMPLE_JAR}" > benchmark-output.md
+          {
+            echo "## Benchmark Results (ubuntu-latest, Java 21)"
+            echo
+            cat benchmark-output.md
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload example artifact
         uses: actions/upload-artifact@v4
