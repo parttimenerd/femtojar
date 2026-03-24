@@ -127,7 +127,9 @@ public class BenchmarkRunner {
                     "cli-benchmark");
             long elapsedNs = System.nanoTime() - startNs;
             long size = Files.size(tempOut);
-            return new BenchmarkResult(benchmarkCase, size, elapsedNs / 1_000_000);
+            long elapsedMs = elapsedNs / 1_000_000;
+            BenchmarkResult result = new BenchmarkResult(benchmarkCase, size, elapsedMs);
+            return result;
         } finally {
             if (tempOut != null) {
                 try {

@@ -20,10 +20,10 @@ mvn package
 
 The plugin is configured in `pom.xml` to run `femtojar:reencode-jars` against:
 
-- `${project.build.directory}/${project.build.finalName}.jar`
+- `${project.artifactId}.jar`
 
 The combined JAR includes `picocli` and is directly runnable:
 
 ```bash
-java -jar target/demo-app-1.0-SNAPSHOT.jar --repeats 3000
+java -jar target/demo-app-optimized.jar --repeats 3000
 ```

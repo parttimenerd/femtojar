@@ -49,7 +49,9 @@ Important:
   </executions>
   <configuration>
     <jars>
-      <jar>${project.build.finalName}.jar</jar>
+      <jar>
+        <in>${project.build.finalName}.jar</in>
+      </jar>
     </jars>
   </configuration>
 </plugin>
@@ -78,11 +80,14 @@ Important:
     <zopfliIterations>100</zopfliIterations>
     <bundleResources>false</bundleResources>
     <jars>
-      <jar>${project.build.finalName}.jar</jar>
+      <jar>
+        <in>${project.build.finalName}.jar</in>
+        <out>${project.build.finalName}-optimized.jar</out>
+      </jar>
+      <jar>
+        <in>other.jar</in>
+      </jar>
     </jars>
-    <outJars>
-      <outJar>${project.build.finalName}-optimized.jar</outJar>
-    </outJars>
   </configuration>
 </plugin>
 ```
@@ -91,8 +96,9 @@ Important:
 
 | Parameter | Description | Default |
 | --- | --- | --- |
-| `jars` | Input JAR list. Relative paths are resolved against `${project.build.directory}`. | Required |
-| `outJars` | Optional output JAR list mapped 1:1 to `jars`. If omitted, rewrite in-place. | Not set |
+| `jars` | List of JAR entries to reencode. Each entry has an `<in>` path and optional `<out>` path. | Required |
+| `jars[i].in` | Input JAR path (relative to `${project.build.directory}` if not absolute) | Required per entry |
+| `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
 | `zopfli` | Use Zopfli for the shared blob compression. | `true` |
 | `zopfliIterations` | Zopfli iteration count. Higher can compress better, but is slower. | `100` |
 | `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `false` |

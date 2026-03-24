@@ -79,7 +79,7 @@ jobs:
       - name: Run femtojar benchmark on example project
         run: |
           CLI_JAR="$(find target -maxdepth 1 -type f -name 'femtojar.jar')"
-          EXAMPLE_JAR="example-project/target/demo-app-1.0-SNAPSHOT.jar"
+          EXAMPLE_JAR="example-project/target/demo-app.jar"
 
           if [ -z "${CLI_JAR}" ]; then
             echo "::error::No CLI jar found in target/. Expected 'femtojar.jar'."
@@ -93,8 +93,8 @@ jobs:
             exit 1
           fi
 
-          echo "Using CLI jar: ${CLI_JAR}"
-          echo "Benchmark target: ${EXAMPLE_JAR}"
+          echo "Using CLI jar: ${CLI_JAR} ($(du -h ${CLI_JAR} | cut -f1))"
+          echo "Benchmark target: ${EXAMPLE_JAR} ($(du -h ${EXAMPLE_JAR} | cut -f1))"
           java -jar "${CLI_JAR}" --benchmark --benchmark-format markdown --in "${EXAMPLE_JAR}" > benchmark-output.md
           {
             echo "## Benchmark Results (ubuntu-latest, Java 21)"

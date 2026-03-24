@@ -34,20 +34,49 @@ public class ReencodeJarsMojo extends AbstractMojo {
     @Parameter(property = "femtojar.bundleResources", defaultValue = "false")
     private boolean bundleResources;
 
-    @Parameter(required = true)
-    private List<String> jars;
-
     /**
-     * Optional list of output JAR paths, one per entry in {@code jars}.
-     * If omitted, each input JAR is rewritten in place.
+     * List of JAR entries to reencode. Each entry has an input path {@code <in>}
+     * and optional output path {@code <out>}. If no output path is specified,
+     * the input JAR is rewritten in place.
      */
-    @Parameter
-    private List<String> outJars;
+    @Parameter(required = true)
+    private List<JarEntry> jars;
 
     @Parameter(defaultValue = "${project.build.directory}", readonly = true, required = true)
     private String buildDirectory;
 
     private final JarReencoder reencoder = new JarReencoder();
+
+    /**
+     * Configuration for a single JAR reencode operation.
+     */
+    public static class JarEntry {
+        /**
+         * Input JAR path (relative to buildDirectory if not absolute).
+         */
+        private String in;
+
+        /**
+         * Optional output JAR path. If omitted, the input JAR is rewritten in place.
+         */
+        private String out;
+
+        public String getIn() {
+            return in;
+        }
+
+        public void setIn(String in) {
+            this.in = in;
+        }
+
+        public String getOut() {
+            return out;
+        }
+
+        public void setOut(String out) {
+            this.out = out;
+        }
+    }
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -56,15 +85,17 @@ public class ReencodeJarsMojo extends AbstractMojo {
             return;
         }
         if (jars == null || jars.isEmpty()) {
-            throw new MojoExecutionException("Parameter 'jars' must contain at least one JAR path");
-        }
-        if (outJars != null && outJars.size() != jars.size()) {
-            throw new MojoExecutionException("Parameter 'outJars' must have the same number of entries as 'jars'");
+            throw new MojoExecutionException("Parameter 'jars' must contain at least one JAR entry");
         }
         String femtojarVersion = getFemtojarVersion();
-        for (int i = 0; i < jars.size(); i++) {
-            Path sourceJarPath = resolveJarPath(jars.get(i));
-            Path targetJarPath = outJars == null ? sourceJarPath : resolveJarPath(outJars.get(i));
+        for (JarEntry entry : jars) {
+            if (entry.getIn() == null || entry.getIn().isBlank()) {
+                throw new MojoExecutionException("Each JAR entry must have an 'in' path");
+            }
+            Path sourceJarPath = resolveJarPath(entry.getIn());
+            Path targetJarPath = entry.getOut() == null || entry.getOut().isBlank()
+                    ? sourceJarPath
+                    : resolveJarPath(entry.getOut());
             try {
                 JarReencoder.ReencodeResult result;
                 if (sourceJarPath.equals(targetJarPath)) {
@@ -112,7 +143,7 @@ public class ReencodeJarsMojo extends AbstractMojo {
 
     private Path resolveJarPath(String configuredJar) throws MojoExecutionException {
         if (configuredJar == null) {
-            throw new MojoExecutionException("Parameter 'jars' must not contain null values");
+            throw new MojoExecutionException("JAR path must not be null");
         }
         Path configuredPath = Paths.get(configuredJar);
         if (configuredPath.isAbsolute()) {
