@@ -41,7 +41,9 @@
             <configuration>
               <bundleResources>true</bundleResources>
               <jars>
-                <jar>${project.build.finalName}.jar</jar>
+                <jar>
+                  <in>${project.build.finalName}.jar</in>
+                </jar>
               </jars>
             </configuration>
           </execution>

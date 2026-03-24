@@ -40,11 +40,11 @@
             </goals>
             <configuration>
               <jars>
-                <jar>${project.build.finalName}.jar</jar>
+                <jar>
+                  <in>${project.build.finalName}.jar</in>
+                  <out>${project.build.finalName}-optimized.jar</out>
+                </jar>
               </jars>
-              <outJars>
-                <outJar>${project.build.finalName}-optimized.jar</outJar>
-              </outJars>
             </configuration>
           </execution>
         </executions>
