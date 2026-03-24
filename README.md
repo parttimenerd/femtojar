@@ -9,6 +9,7 @@ _It's still an early proof-of-concept, but initial results show promising size r
 - Single-blob class compression for better cross-class redundancy
 - Zopfli compression mode (default) with configurable iterations
 - Deflate fallback mode for faster builds
+- Optional randomization mode to try multiple class orderings and keep the smallest result
 - Optional bundling of non-`META-INF/*` resources
 - Maven plugin goal and standalone CLI
 - Integration-test profile (`run-its`) with Maven Invoker fixtures
@@ -20,6 +21,30 @@ Zopfli is great, because it essentially generates more effizient deflate/gz stre
 [Wikipedia](https://en.wikipedia.org/wiki/Zopfli)
 
 More info: https://blog.codinghorror.com/zopfli-optimization-literally-free-bandwidth/
+
+## Randomization Mode
+
+`femtojar` can optionally try multiple class-file orders before creating the final compressed blob.
+
+Why this exists:
+
+- Deflate/Zopfli use a fixed 32KB sliding window.
+- In one large bundled stream, class order affects which repeated byte patterns are still inside that window.
+- A different order can produce slightly smaller output, especially for large shaded JARs.
+
+How it works:
+
+- Default `randomizeIterations=-1`: disabled; use stable lexical class ordering.
+- If `randomizeIterations > 0`:
+- First measure lexical ordering.
+- Then try `randomizeIterations` random class orders.
+- Keep the ordering that yields the smallest compressed blob.
+
+Trade-offs:
+
+- Better size potential, longer build time.
+- Most useful for release builds, CI benchmark runs, or distribution artifacts.
+- Usually not needed for fast local dev builds.
 
 ## Maven Plugin
 
@@ -100,6 +125,7 @@ Important:
 | `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
 | `compressionMode` | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
 | `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `false` |
+| `randomizeIterations` | Class-order search iterations. `-1` disables randomization and uses lexical order; values `> 0` try random orders and keep the smallest output. | `-1` |
 | `failOnError` | Fail build immediately on rewrite errors. | `true` |
 | `skip` | Skip plugin execution. | `false` |
 
@@ -136,8 +162,10 @@ CLI options:
 - `--in <path>`: input JAR path
 - `--out <path>`: output JAR path (optional, defaults to in-place rewrite)
 - `--compression <default|zopfli|max>`: compression preset (`default`=deflate, `zopfli`=7 iterations, `max`=100 iterations)
-- `--bundle-resources`: enable resource bundling (enabled by default)
+- `--bundle-resources`: enable resource bundling
 - `--no-bundle-resources`: disable resource bundling
+- `--randomize-iterations <N>`: class-order search iterations (`-1` disables; values `> 0` try random orderings and pick the best)
+- `--rverbose` (or `--verbose`): print randomization iteration logs (size per trial)
 - `--benchmark`: run a non-destructive benchmark matrix in parallel and print size/time comparisons
 - `--benchmark-format <text|markdown>`: optional benchmark output format (default: `text`)
 - `-h`, `--help`: show usage
