@@ -10,7 +10,40 @@
     <packaging>maven-plugin</packaging>
 
     <name>femtojar</name>
-    <description>Maven plugin to re-encode configured JAR files with zlib compression.</description>
+    <description>Maven plugin to re-encode JAR files with a custom class loader and better compression.</description>
+    <url>https://github.com/parttimenerd/femtojar</url>
+
+    <licenses>
+        <license>
+            <name>MIT</name>
+            <url>https://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>parttimenerd</id>
+            <name>Johannes Bechberger</name>
+            <email>me@mostlynerdless.de</email>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git@github.com:parttimenerd/femtojar.git</connection>
+        <developerConnection>scm:git:https://github.com/parttimenerd/femtojar.git</developerConnection>
+        <url>https://github.com/parttimenerd/femtojar</url>
+    </scm>
+
+    <distributionManagement>
+        <snapshotRepository>
+            <id>ossrh</id>
+            <url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
+        <repository>
+            <id>ossrh</id>
+            <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository>
+    </distributionManagement>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

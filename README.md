@@ -1,5 +1,7 @@
 # femtojar
 
+[![CI](https://github.com/parttimenerd/femtojar/actions/workflows/ci.yml/badge.svg)](https://github.com/parttimenerd/femtojar/actions/workflows/ci.yml)
+
 femtojar shrinks executable JARs by bundling `.class` files into a single compressed blob and loading them through a tiny bootstrap classloader at runtime.
 
 _It's still an early proof-of-concept, but initial results show promising size reductions of 20-30% on typical shaded/uber JARs._
