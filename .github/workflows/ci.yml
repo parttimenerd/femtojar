@@ -63,6 +63,9 @@ jobs:
       - name: Install plugin
         run: mvn install -DskipTests
 
+      - name: Build CLI artifact for benchmark
+        run: mvn package -DskipTests
+
       - name: Build example project
         working-directory: example-project
         run: mvn package
@@ -75,8 +78,21 @@ jobs:
 
       - name: Run femtojar benchmark on example project
         run: |
-          CLI_JAR="$(ls target/*-cli.jar | head -n 1)"
+          CLI_JAR="$(find target -maxdepth 1 -type f -name '*-cli.jar' | head -n 1)"
           EXAMPLE_JAR="example-project/target/demo-app-1.0-SNAPSHOT.jar"
+
+          if [ -z "${CLI_JAR}" ]; then
+            echo "::error::No CLI jar found in target/."
+            ls -la target || true
+            exit 1
+          fi
+
+          if [ ! -f "${EXAMPLE_JAR}" ]; then
+            echo "::error::Benchmark target jar not found: ${EXAMPLE_JAR}"
+            ls -la example-project/target || true
+            exit 1
+          fi
+
           echo "Using CLI jar: ${CLI_JAR}"
           echo "Benchmark target: ${EXAMPLE_JAR}"
           java -jar "${CLI_JAR}" --benchmark --benchmark-format markdown --in "${EXAMPLE_JAR}" > benchmark-output.md
