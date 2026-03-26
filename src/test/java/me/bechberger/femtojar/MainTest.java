@@ -123,7 +123,6 @@ class MainTest {
         assertTrue(output.contains("Result table"), () -> output);
         assertTrue(output.contains("default"));
         assertTrue(output.contains("zopfli"));
-        assertTrue(output.contains("max"));
         assertTrue(output.contains("proguard default"));
         assertTrue(output.contains("Best reduction:"));
 

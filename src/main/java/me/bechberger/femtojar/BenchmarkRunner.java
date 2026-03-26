@@ -30,10 +30,8 @@ public class BenchmarkRunner {
     private static final List<BenchmarkCase> CASES = List.of(
             new BenchmarkCase(CompressionMode.DEFAULT, false),
             new BenchmarkCase(CompressionMode.ZOPFLI, false),
-            new BenchmarkCase(CompressionMode.MAX, false),
             new BenchmarkCase(CompressionMode.DEFAULT, true),
             new BenchmarkCase(CompressionMode.ZOPFLI, true),
-            new BenchmarkCase(CompressionMode.MAX, true),
             new BenchmarkCase(null, true));
 
     private final PrintStream out;

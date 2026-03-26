@@ -16,8 +16,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        java-version: [17, 21, 25]
+        include:
+          - os: ubuntu-latest
+            java-version: 17
+          - os: ubuntu-latest
+            java-version: 21
+          - os: ubuntu-latest
+            java-version: 25
+          - os: macos-latest
+            java-version: 21
 
     steps:
       - name: Checkout code
@@ -45,8 +52,8 @@ jobs:
         run: mvn package -DskipTests
 
   example-project:
-    name: Example Project Check (Ubuntu, Java 21)
-    runs-on: ubuntu-latest
+    name: Example Project Check (macOS, Java 21)
+    runs-on: macos-latest
     needs: test-matrix
 
     steps:
@@ -84,8 +91,8 @@ jobs:
           retention-days: 14
 
   benchmarks:
-    name: Benchmarks (Ubuntu, Java 21)
-    runs-on: ubuntu-latest
+    name: Benchmarks (macOS, Java 21)
+    runs-on: macos-latest
     needs: example-project
 
     steps:
@@ -201,6 +208,51 @@ jobs:
             exit 1
           fi
 
+          echo "Generating jars for each compression mode (including ProGuard variants) and checking --help exit codes..."
+          mkdir -p generated-help-check
+          for INPUT_JAR in \
+            example-project/target/demo-app.jar \
+            jstall-full.jar \
+            jstall-minimal.jar \
+            condensed-data.jar \
+            condensed-data-linux-amd64.jar \
+            condensed-data-linux-amd64-inflaterless.jar
+          do
+            BASE_NAME="$(basename "$INPUT_JAR" .jar)"
+            for MODE in default zopfli; do
+              OUTPUT_JAR="generated-help-check/${BASE_NAME}-${MODE}.jar"
+              echo "Generating $OUTPUT_JAR from $INPUT_JAR with --compression $MODE"
+              java -jar "${CLI_JAR}" "$INPUT_JAR" "$OUTPUT_JAR" --compression "$MODE" > /dev/null
+              echo "--help check: $OUTPUT_JAR"
+              java -jar "$OUTPUT_JAR" --help > /dev/null
+
+              PROGUARD_OUTPUT_JAR="generated-help-check/${BASE_NAME}-${MODE}-proguard.jar"
+              PG_ARGS=()
+              case "$INPUT_JAR" in
+                example-project/target/demo-app.jar)
+                  PG_ARGS=(--proguard-config example-project/proguard.conf)
+                  ;;
+                jstall-full.jar|jstall-minimal.jar)
+                  PG_ARGS=(
+                    --proguard-options "-keep class me.bechberger.jstall.cli.**"
+                    --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**"
+                    --proguard-options "-dontwarn"
+                  )
+                  ;;
+                condensed-data.jar|condensed-data-linux-amd64.jar|condensed-data-linux-amd64-inflaterless.jar)
+                  PG_ARGS=(
+                    --proguard-options "-dontwarn"
+                    --proguard-options "-keep class **.cli.** { *; }"
+                  )
+                  ;;
+              esac
+              echo "Generating $PROGUARD_OUTPUT_JAR from $INPUT_JAR with --compression $MODE --proguard"
+              java -jar "${CLI_JAR}" "$INPUT_JAR" "$PROGUARD_OUTPUT_JAR" --compression "$MODE" --proguard "${PG_ARGS[@]}" > /dev/null
+              echo "--help check: $PROGUARD_OUTPUT_JAR"
+              java -jar "$PROGUARD_OUTPUT_JAR" --help > /dev/null
+            done
+          done
+
           java -jar "${CLI_JAR}" example-project/target/demo-app.jar --benchmark --benchmark-format json \
             --proguard-config example-project/proguard.conf > demo-app.json 2>demo-app.log &
           PID_DEMO=$!
@@ -254,10 +306,8 @@ jobs:
           mode_order = [
               "default",
               "zopfli",
-              "max",
               "proguard default",
               "proguard zopfli",
-              "proguard max",
               "proguard",
           ]
 
@@ -292,14 +342,16 @@ jobs:
           for label, _ in columns:
               doc = data[label]["doc"]
               size = doc["originalSize"]
+              size_mb = size / (1024 * 1024)
               bm = doc["bestMode"]
               if bm == "none":
-                  best_str = "all failed"
+                  best_str = f"{size_mb:.3f} MB, best: all failed"
               else:
                   pct = doc["bestReductionPercent"]
+                  reduced_mb = (size * pct / 100.0) / (1024 * 1024)
                   t = doc["bestTimeSeconds"]
-                  best_str = f"{bm} ({pct:.1f}%) in {t}s"
-              print(f"- **{label}**: {size} bytes, best: {best_str}")
+                  best_str = f"{size_mb:.3f} MB, best: {bm} ({pct:.1f}%, reduced {reduced_mb:.3f} MB) in {t}s"
+              print(f"- **{label}**: {best_str}")
           print()
 
           col_labels = [label for label, _ in columns]
@@ -341,7 +393,7 @@ jobs:
 
   release-build:
     name: Build Release Artifacts
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     needs: [test-matrix, example-project]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
@@ -370,5 +422,5 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: femtojar-cli
-          path: target/*-cli.jar
+          path: target/femtojar.jar
           retention-days: 30
