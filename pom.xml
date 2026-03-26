@@ -81,7 +81,7 @@
         <dependency>
             <groupId>me.bechberger.util</groupId>
             <artifactId>femtocli</artifactId>
-            <version>0.3.7</version>
+            <version>0.3.8</version>
         </dependency>
 
         <dependency>
