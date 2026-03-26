@@ -1,13 +1,13 @@
 package me.bechberger.femtojar;
 
+import me.bechberger.femtocli.FemtoCli;
+import me.bechberger.femtocli.RunResult;
 import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
@@ -18,10 +18,7 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class MainTest {
 
@@ -32,92 +29,64 @@ class MainTest {
         Path outputJar = tempDir.resolve("output.jar");
         createSampleJar(inputJar);
 
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
+        RunResult result = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), outputJar.toString(), "--deflate"});
 
-        int exitCode = Main.run(
-                new String[]{"--in", inputJar.toString(), "--out", outputJar.toString(), "--deflate"},
-                new PrintStream(outBytes),
-                new PrintStream(errBytes));
-
-        assertEquals(0, exitCode, "CLI should succeed. stderr=" + errBytes);
-        assertTrue(Files.exists(outputJar), "Output JAR should exist");
-        assertTrue(new String(outBytes.toByteArray()).contains("Re-encoded"), "CLI should print summary");
+        assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
+        assertTrue(Files.exists(outputJar));
+        assertTrue(result.out().contains("Re-encoded"), () -> result.out());
 
         // Input jar should remain unchanged when output jar is specified.
-        assertFalse(Files.readAllBytes(inputJar).length == 0, "Input jar should still exist and be readable");
+        assertNotEquals(0, Files.readAllBytes(inputJar).length);
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
-            assertTrue(jar.getEntry("__classes.zlib") != null, "Optimized jar should contain bundled blob");
-            assertTrue(jar.getEntry("META-INF/MANIFEST.MF") != null, "Optimized jar should keep manifest");
+            assertNotNull(jar.getEntry("__classes.zlib"));
+            assertNotNull(jar.getEntry("META-INF/MANIFEST.MF"));
         }
     }
 
     @Test
     void showsUsageForHelp() {
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
-
-        int exitCode = Main.run(new String[]{"--help"}, new PrintStream(outBytes), new PrintStream(errBytes));
-
-        assertEquals(0, exitCode);
-        assertTrue(new String(outBytes.toByteArray()).contains("Usage:"));
+        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{"--help"});
+        assertEquals(0, result.exitCode());
+        assertTrue(result.out().contains("Usage:"), () -> result.out());
     }
 
     @Test
     void failsForUnknownOption() {
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
-
-        int exitCode = Main.run(
-                new String[]{"--does-not-exist"},
-                new PrintStream(outBytes),
-                new PrintStream(errBytes));
-
-        assertEquals(2, exitCode);
-        assertTrue(new String(errBytes.toByteArray()).contains("Unknown option"));
+        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{"--does-not-exist"});
+        assertEquals(2, result.exitCode());
+        assertTrue(result.err().contains("Unknown option"), () -> result.err());
     }
 
     @Test
-    void failsForInvalidCompressionMode() {
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
+    void failsForInvalidCompressionMode() throws Exception {
+        Path tempDir = Files.createTempDirectory("femtojar-cli-invalid-compression-test");
+        Path inputJar = tempDir.resolve("input.jar");
+        createSampleJar(inputJar);
 
-        int exitCode = Main.run(
-                new String[]{"--in", "input.jar", "--compression", "ultra"},
-                new PrintStream(outBytes),
-                new PrintStream(errBytes));
-
-        assertEquals(2, exitCode);
-        assertTrue(new String(errBytes.toByteArray()).contains("Invalid value for --compression"));
+        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{inputJar.toString(), "--compression", "ultra"});
+        assertEquals(2, result.exitCode());
+        assertTrue(result.err().contains("Invalid value for --compression"), () -> result.err());
     }
 
     @Test
-    void failsForInvalidBenchmarkFormat() {
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
+    void failsForInvalidBenchmarkFormat() throws Exception {
+        Path tempDir = Files.createTempDirectory("femtojar-cli-invalid-benchmark-format-test");
+        Path inputJar = tempDir.resolve("input.jar");
+        createSampleJar(inputJar);
 
-        int exitCode = Main.run(
-                new String[]{"--benchmark", "--in", "input.jar", "--benchmark-format", "html"},
-                new PrintStream(outBytes),
-                new PrintStream(errBytes));
-
-        assertEquals(2, exitCode);
-        assertTrue(new String(errBytes.toByteArray()).contains("Invalid value for --benchmark-format"));
+        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{"--benchmark", inputJar.toString(), "--benchmark-format", "html"});
+        assertEquals(2, result.exitCode());
+        assertTrue(result.err().contains("Invalid value for --benchmark-format"), () -> result.err());
     }
 
     @Test
     void failsForMissingInputJarFile() {
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
-
-        int exitCode = Main.run(
-                new String[]{"--in", "definitely-missing.jar"},
-                new PrintStream(outBytes),
-                new PrintStream(errBytes));
-
-        assertEquals(2, exitCode);
-        assertTrue(new String(errBytes.toByteArray()).contains("Input JAR does not exist"));
+        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{"definitely-missing.jar"});
+        assertEquals(2, result.exitCode());
+        assertTrue(result.err().contains("Input JAR does not exist"), () -> result.err());
     }
 
     @Test
@@ -127,16 +96,14 @@ class MainTest {
         Path outputJar = tempDir.resolve("output.jar");
         createSampleJarWithResource(inputJar);
 
-        int exitCode = Main.run(
-                new String[]{"--in", inputJar.toString(), "--out", outputJar.toString(), "--bundle-resources", "--deflate"},
-                new PrintStream(new ByteArrayOutputStream()),
-                new PrintStream(new ByteArrayOutputStream()));
+        RunResult result = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), outputJar.toString(), "--bundle-resources", "--deflate"});
 
-        assertEquals(0, exitCode);
+        assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
         try (JarFile jar = new JarFile(outputJar.toFile())) {
-            assertTrue(jar.getEntry("__classes.zlib") != null, "Bundled output must contain class blob");
-            assertTrue(jar.getEntry("app.properties") == null,
-                    "Resource should be bundled into blob with --bundle-resources");
+            assertNotNull(jar.getEntry("__classes.zlib"));
+            assertNull(jar.getEntry("app.properties"));
         }
     }
 
@@ -147,25 +114,21 @@ class MainTest {
         createSampleJarWithResource(inputJar);
 
         byte[] originalBytes = Files.readAllBytes(inputJar);
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
+        RunResult result = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), "--benchmark"});
 
-        int exitCode = Main.run(
-            new String[]{"--benchmark", "--in", inputJar.toString()},
-                new PrintStream(outBytes),
-                new PrintStream(errBytes));
-
-        String output = outBytes.toString();
-        assertEquals(0, exitCode, "Benchmark should succeed. stderr=" + errBytes);
-        assertTrue(output.contains("Result table"), "Benchmark output should contain result table");
-        assertTrue(output.contains("default, resources=off"), "Benchmark output should include default mode");
-        assertTrue(output.contains("zopfli, resources=on"), "Benchmark output should include zopfli/resource mode");
-        assertTrue(output.contains("max, resources=off"), "Benchmark output should include max mode");
-        assertTrue(output.contains("Best setting:"), "Benchmark output should include best setting");
+        String output = result.out();
+        assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
+        assertTrue(output.contains("Result table"), () -> output);
+        assertTrue(output.contains("default, resources=off"));
+        assertTrue(output.contains("zopfli, resources=on"));
+        assertTrue(output.contains("max, resources=off"));
+        assertTrue(output.contains("Best setting:"));
 
         byte[] currentBytes = Files.readAllBytes(inputJar);
-        assertNotEquals(0, currentBytes.length, "Input jar should remain readable after benchmark");
-        assertTrue(java.util.Arrays.equals(originalBytes, currentBytes), "Benchmark mode must not modify input JAR");
+        assertNotEquals(0, currentBytes.length);
+        assertArrayEquals(originalBytes, currentBytes);
     }
 
     @Test
@@ -174,20 +137,15 @@ class MainTest {
         Path inputJar = tempDir.resolve("input.jar");
         createSampleJarWithResource(inputJar);
 
-        ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBytes = new ByteArrayOutputStream();
+        RunResult result = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), "--benchmark", "--benchmark-format", "markdown"});
 
-        int exitCode = Main.run(
-            new String[]{"--benchmark", "--benchmark-format", "markdown", "--in", inputJar.toString()},
-                new PrintStream(outBytes),
-                new PrintStream(errBytes));
-
-        String output = outBytes.toString();
-        assertEquals(0, exitCode, "Markdown benchmark should succeed. stderr=" + errBytes);
-        assertTrue(output.contains("## femtojar benchmark"), "Markdown header should be present");
-        assertTrue(output.contains("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(%) | time vs default(%) |"),
-                "Markdown table header should be present");
-        assertTrue(output.contains("| default, resources=off |"), "Markdown table should include default mode");
+        String output = result.out();
+        assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
+        assertTrue(output.contains("## femtojar benchmark"), () -> output);
+        assertTrue(output.contains("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(%) | time vs default(%) |"));
+        assertTrue(output.contains("| default, resources=off |"));
     }
 
     @Test
@@ -197,11 +155,10 @@ class MainTest {
         Path outputJar = tempDir.resolve("output.jar");
         createSampleJar(inputJar);
 
-        int encodeExit = Main.run(
-                new String[]{"--in", inputJar.toString(), "--out", outputJar.toString(), "--deflate"},
-                new PrintStream(new ByteArrayOutputStream()),
-                new PrintStream(new ByteArrayOutputStream()));
-        assertEquals(0, encodeExit);
+        RunResult encodeResult = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), outputJar.toString(), "--deflate"});
+        assertEquals(0, encodeResult.exitCode(), () -> "stderr: " + encodeResult.err());
 
         Process process = new ProcessBuilder(List.of("java", "-jar", outputJar.toString(), "one", "two"))
                 .redirectErrorStream(true)
@@ -213,9 +170,9 @@ class MainTest {
         }
 
         int runExit = process.waitFor();
-        assertEquals(0, runExit, "Optimized JAR should run successfully. Output:\n" + output);
-        assertTrue(output.contains("CLI_EXEC_OK"), "Expected runtime marker missing. Output:\n" + output);
-        assertTrue(output.contains("ARG_COUNT=2"), "Expected argument count marker missing. Output:\n" + output);
+        assertEquals(0, runExit, () -> "Process failed. Output:\n" + output);
+        assertTrue(output.contains("CLI_EXEC_OK"), () -> output);
+        assertTrue(output.contains("ARG_COUNT=2"), () -> output);
     }
 
     private static void createSampleJar(Path jarPath) throws Exception {

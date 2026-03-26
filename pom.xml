@@ -52,6 +52,8 @@
         <maven.plugin.tools.version>3.13.1</maven.plugin.tools.version>
         <maven.plugin.api.version>3.9.9</maven.plugin.api.version>
         <junit.jupiter.version>5.12.2</junit.jupiter.version>
+        <version.proguard>7.9.0</version.proguard>
+        <version.proguard-core>9.3.2</version.proguard-core>
     </properties>
 
     <dependencies>
@@ -76,6 +78,11 @@
             <artifactId>pngtastic</artifactId>
             <version>1.7</version>
         </dependency>
+        <dependency>
+            <groupId>me.bechberger.util</groupId>
+            <artifactId>femtocli</artifactId>
+            <version>0.3.6</version>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -88,6 +95,20 @@
             <artifactId>junit-jupiter-engine</artifactId>
             <version>${junit.jupiter.version}</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.guardsquare</groupId>
+            <artifactId>proguard-base</artifactId>
+            <version>${version.proguard}</version>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>com.guardsquare</groupId>
+            <artifactId>proguard-core</artifactId>
+            <version>${version.proguard-core}</version>
+            <scope>runtime</scope>
+            <optional>true</optional>
         </dependency>
     </dependencies>
 
@@ -119,6 +140,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
+                <configuration>
+                    <argLine>--add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+                    <trimStackTrace>false</trimStackTrace>
+                </configuration>
             </plugin>
             <plugin>
                 <artifactId>maven-assembly-plugin</artifactId>

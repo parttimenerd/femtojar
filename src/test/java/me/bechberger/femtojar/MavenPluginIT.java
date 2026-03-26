@@ -2,6 +2,7 @@ package me.bechberger.femtojar;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -24,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+@EnabledIfSystemProperty(named = "it.projects.dir", matches = ".+")
 class MavenPluginIT {
 
     private static Path itProjectsDir;
