@@ -82,9 +82,9 @@ public class BenchmarkRunner {
         }
         executor.shutdown();
 
-        for (Future<BenchmarkResult> future : futures) {
+        for (int fi = 0; fi < futures.size(); fi++) {
             try {
-                BenchmarkResult result = future.get();
+                BenchmarkResult result = futures.get(fi).get();
                 results.add(result);
                 if (format == Format.TEXT) {
                     out.println("  done: " + result.benchmarkCase().label());
@@ -94,14 +94,10 @@ public class BenchmarkRunner {
                 err.println("Benchmark interrupted");
                 return 1;
             } catch (ExecutionException ex) {
+                BenchmarkCase failedCase = CASES.get(fi);
                 Throwable cause = ex.getCause();
-                if (cause instanceof IOException ioEx) {
-                    err.println("Benchmark case failed: " + ioEx.getMessage());
-                } else {
-                    err.println("Benchmark case failed: " + cause.getMessage());
-                }
-                futures.forEach(f -> f.cancel(true));
-                return 1;
+                err.println("Benchmark case '" + failedCase.label() + "' failed: " + cause.getMessage());
+                results.add(BenchmarkResult.failure(failedCase));
             }
         }
 
@@ -163,7 +159,7 @@ public class BenchmarkRunner {
 
             long elapsedNs = System.nanoTime() - startNs;
             long elapsedMs = elapsedNs / 1_000_000;
-            return new BenchmarkResult(benchmarkCase, size, elapsedMs);
+            return BenchmarkResult.success(benchmarkCase, size, elapsedMs);
         } finally {
             if (tempOut != null) {
                 try {
@@ -198,8 +194,13 @@ public class BenchmarkRunner {
         }
 
         BenchmarkResult best = results.stream()
+                .filter(r -> !r.failed())
                 .min(Comparator.comparingLong(BenchmarkResult::sizeBytes))
-                .orElseThrow();
+                .orElse(null);
+        if (best == null) {
+            err.println("All benchmark cases failed");
+            return;
+        }
         long bestSavedBytes = originalSize - best.sizeBytes();
         double bestSavedPct = originalSize == 0 ? 0d : (bestSavedBytes * 100.0) / originalSize;
         long bestSeconds = Math.max(0L, Math.round(best.elapsedMs() / 1000.0));
@@ -223,6 +224,10 @@ public class BenchmarkRunner {
                 if (result == null) {
                     continue;
                 }
+                if (result.failed()) {
+                    out.printf("| %s | failed | failed | failed |%n", result.benchmarkCase().label());
+                    continue;
+                }
                 long saved = originalSize - result.sizeBytes();
                 double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
                 double seconds = result.elapsedMs() / 1000.0;
@@ -241,6 +246,10 @@ public class BenchmarkRunner {
         for (BenchmarkCase benchmarkCase : CASES) {
             BenchmarkResult result = byLabel.get(benchmarkCase.label());
             if (result == null) {
+                continue;
+            }
+            if (result.failed()) {
+                out.printf("%-18s %12s %10s %9s%n", result.benchmarkCase().label(), "failed", "failed", "failed");
                 continue;
             }
             long saved = originalSize - result.sizeBytes();
@@ -276,15 +285,19 @@ public class BenchmarkRunner {
             if (result == null) {
                 continue;
             }
-            long saved = originalSize - result.sizeBytes();
-            double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
-            double seconds = result.elapsedMs() / 1000.0;
             out.println("    {");
             out.println("      \"mode\": \"" + escapeJson(result.benchmarkCase().label()) + "\",");
-            out.println("      \"sizeBytes\": " + result.sizeBytes() + ",");
-            out.printf("      \"savedPercent\": %.4f,%n", savedPct);
-            out.printf("      \"elapsedSeconds\": %.4f,%n", seconds);
-            out.println("      \"elapsedMs\": " + result.elapsedMs());
+            if (result.failed()) {
+                out.println("      \"failed\": true");
+            } else {
+                long saved = originalSize - result.sizeBytes();
+                double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
+                double seconds = result.elapsedMs() / 1000.0;
+                out.println("      \"sizeBytes\": " + result.sizeBytes() + ",");
+                out.printf("      \"savedPercent\": %.4f,%n", savedPct);
+                out.printf("      \"elapsedSeconds\": %.4f,%n", seconds);
+                out.println("      \"elapsedMs\": " + result.elapsedMs());
+            }
             out.print("    }");
             out.println(i == CASES.size() - 1 ? "" : ",");
         }
@@ -308,6 +321,12 @@ public class BenchmarkRunner {
         }
     }
 
-    private record BenchmarkResult(BenchmarkCase benchmarkCase, long sizeBytes, long elapsedMs) {
+    private record BenchmarkResult(BenchmarkCase benchmarkCase, long sizeBytes, long elapsedMs, boolean failed) {
+        static BenchmarkResult success(BenchmarkCase benchmarkCase, long sizeBytes, long elapsedMs) {
+            return new BenchmarkResult(benchmarkCase, sizeBytes, elapsedMs, false);
+        }
+        static BenchmarkResult failure(BenchmarkCase benchmarkCase) {
+            return new BenchmarkResult(benchmarkCase, -1, 0, true);
+        }
     }
 }

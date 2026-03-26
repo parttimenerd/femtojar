@@ -276,8 +276,11 @@ jobs:
           for mode in mode_order:
               values = []
               for _, path in columns:
-                  row = data[path]["rows"][mode]
-                  values.append(f"{row['savedPercent']:.2f}%")
+                  row = data[path]["rows"].get(mode)
+                  if row is None or row.get("failed"):
+                      values.append("failed")
+                  else:
+                      values.append(f"{row['savedPercent']:.2f}%")
               print("| " + mode + " | " + " | ".join(values) + " |")
 
           print()
@@ -288,8 +291,11 @@ jobs:
           for mode in mode_order:
               values = []
               for _, path in columns:
-                  row = data[path]["rows"][mode]
-                  values.append(f"{row['elapsedSeconds']:.2f}")
+                  row = data[path]["rows"].get(mode)
+                  if row is None or row.get("failed"):
+                      values.append("failed")
+                  else:
+                      values.append(f"{row['elapsedSeconds']:.2f}")
               print("| " + mode + " | " + " | ".join(values) + " |")
           ENDPYTHON
 
