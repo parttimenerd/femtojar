@@ -2,6 +2,7 @@ package me.bechberger.femtojar;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -61,6 +62,10 @@ public class ProGuardRunner {
             }
         }
 
+        // Redirect System.out to stderr during ProGuard execution to prevent
+        // ProGuard notes/version banners from polluting structured output (JSON).
+        PrintStream origOut = System.out;
+        System.setOut(System.err);
         try {
             proguard.Configuration configuration = new proguard.Configuration();
             try (proguard.ConfigurationParser parser =
@@ -72,7 +77,11 @@ public class ProGuardRunner {
         } catch (IOException e) {
             throw e;
         } catch (Exception e) {
-            throw new IOException("ProGuard failed: " + e.getMessage(), e);
+            String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getName();
+            e.printStackTrace(System.err);
+            throw new IOException("ProGuard failed (" + e.getClass().getSimpleName() + "): " + detail, e);
+        } finally {
+            System.setOut(origOut);
         }
     }
 

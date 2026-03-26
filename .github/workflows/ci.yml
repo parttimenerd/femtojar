@@ -249,90 +249,89 @@ jobs:
           done
 
           python3 <<'ENDPYTHON' > benchmark-summary.md
-          import json
+          import json, os, sys
 
           mode_order = [
-              "max",
-              "zopfli",
               "default",
-              "proguard max",
-              "proguard zopfli",
+              "zopfli",
+              "max",
               "proguard default",
+              "proguard zopfli",
+              "proguard max",
               "proguard",
           ]
 
           columns = [
-              ("demo-app.jar", "demo-app.json"),
+              ("demo-app", "demo-app.json"),
               ("jstall", "jstall.json"),
-              ("jstall-minimal", "jstall-minimal.json"),
-              ("condensed-data.jar", "condensed-data.json"),
-              ("condensed-data-linux-amd64.jar", "condensed-data-linux-amd64.json"),
-              ("condensed-data-linux-amd64-inflaterless.jar", "condensed-data-linux-amd64-inflaterless.json"),
+              ("jstall-min", "jstall-minimal.json"),
+              ("condensed-data", "condensed-data.json"),
+              ("cd-amd64", "condensed-data-linux-amd64.json"),
+              ("cd-inflaterless", "condensed-data-linux-amd64-inflaterless.json"),
           ]
 
-          import os
-
           data = {}
-          for _, path in columns:
+          for label, path in columns:
               try:
                   if os.path.getsize(path) == 0:
-                      raise ValueError(f"{path} is empty")
+                      raise ValueError("empty file")
                   with open(path, "r", encoding="utf-8") as f:
                       doc = json.load(f)
                   rows = {r["mode"]: r for r in doc["results"]}
-                  data[path] = {
-                      "doc": doc,
-                      "rows": rows,
-                  }
+                  data[label] = {"doc": doc, "rows": rows}
               except Exception as e:
-                  print(f"WARNING: Failed to load {path}: {e}", flush=True)
-                  data[path] = {
-                      "doc": {"input": path, "originalSize": 0, "bestMode": "none", "bestReductionPercent": 0.0, "bestTimeSeconds": 0},
+                  print(f"<!-- WARNING: {path}: {e} -->", file=sys.stderr)
+                  data[label] = {
+                      "doc": {"input": path, "originalSize": 0,
+                              "bestMode": "none", "bestReductionPercent": 0.0,
+                              "bestTimeSeconds": 0},
                       "rows": {},
                   }
 
-          print("## Benchmark Results (ubuntu-latest, Java 21)")
-          print()
-          for label, path in columns:
-              doc = data[path]["doc"]
-              print(f"- input: `{doc['input']}`")
-              print(f"- original size: `{doc['originalSize']}` bytes")
-              if doc["bestMode"] == "none":
-                  print("- best-reduction: **failed** (benchmark crashed)")
+          print("## Benchmark Results\n")
+          for label, _ in columns:
+              doc = data[label]["doc"]
+              size = doc["originalSize"]
+              bm = doc["bestMode"]
+              if bm == "none":
+                  best_str = "all failed"
               else:
-                  print(f"- best-reduction: `{doc['bestMode']}` ({doc['bestReductionPercent']:.2f}%) in {doc['bestTimeSeconds']}s")
-              print()
-
-          print("### Reduction (%)")
+                  pct = doc["bestReductionPercent"]
+                  t = doc["bestTimeSeconds"]
+                  best_str = f"{bm} ({pct:.1f}%) in {t}s"
+              print(f"- **{label}**: {size} bytes, best: {best_str}")
           print()
-          header = "| reduction | " + " | ".join(label for label, _ in columns) + " |"
+
+          col_labels = [label for label, _ in columns]
+          header = "| mode | " + " | ".join(col_labels) + " |"
           sep = "| --- | " + " | ".join(["---:"] * len(columns)) + " |"
+
+          print("### Reduction (%)\n")
           print(header)
           print(sep)
           for mode in mode_order:
-              values = []
-              for _, path in columns:
-                  row = data[path]["rows"].get(mode)
+              vals = []
+              for label, _ in columns:
+                  row = data[label]["rows"].get(mode)
                   if row is None or row.get("failed"):
-                      values.append("failed")
+                      vals.append("--")
                   else:
-                      values.append(f"{row['savedPercent']:.2f}%")
-              print("| " + mode + " | " + " | ".join(values) + " |")
+                      vals.append(f"{row['savedPercent']:.1f}")
+              print("| " + mode + " | " + " | ".join(vals) + " |")
 
           print()
-          print("### Time (s)")
-          print()
-          print("| time | " + " | ".join(label for label, _ in columns) + " |")
+          print("### Time (s)\n")
+          print(header)
           print(sep)
           for mode in mode_order:
-              values = []
-              for _, path in columns:
-                  row = data[path]["rows"].get(mode)
+              vals = []
+              for label, _ in columns:
+                  row = data[label]["rows"].get(mode)
                   if row is None or row.get("failed"):
-                      values.append("failed")
+                      vals.append("--")
                   else:
-                      values.append(f"{row['elapsedSeconds']:.2f}")
-              print("| " + mode + " | " + " | ".join(values) + " |")
+                      vals.append(f"{row['elapsedSeconds']:.1f}")
+              print("| " + mode + " | " + " | ".join(vals) + " |")
           ENDPYTHON
 
           {

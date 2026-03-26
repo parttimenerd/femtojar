@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -96,7 +97,9 @@ public class BenchmarkRunner {
             } catch (ExecutionException ex) {
                 BenchmarkCase failedCase = CASES.get(fi);
                 Throwable cause = ex.getCause();
-                err.println("Benchmark case '" + failedCase.label() + "' failed: " + cause.getMessage());
+                String detail = cause.getMessage() != null ? cause.getMessage() : cause.toString();
+                err.println("Benchmark case '" + failedCase.label() + "' failed: " + detail);
+                cause.printStackTrace(err);
                 results.add(BenchmarkResult.failure(failedCase));
             }
         }
@@ -208,7 +211,7 @@ public class BenchmarkRunner {
             out.println("- input: `" + inputJar + "`");
             out.println("- original size: `" + originalSize + "` bytes");
             if (best != null) {
-                out.printf("- best-reduction: `%s` (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
+                out.printf(Locale.ROOT, "- best-reduction: `%s` (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
             } else {
                 out.println("- best-reduction: none (all cases failed)");
             }
@@ -227,7 +230,7 @@ public class BenchmarkRunner {
                 long saved = originalSize - result.sizeBytes();
                 double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
                 double seconds = result.elapsedMs() / 1000.0;
-                out.printf("| %s | %d | %.2f | %.2f |%n",
+                out.printf(Locale.ROOT, "| %s | %d | %.2f | %.2f |%n",
                         result.benchmarkCase().label(),
                         result.sizeBytes(),
                         savedPct,
@@ -251,7 +254,7 @@ public class BenchmarkRunner {
             long saved = originalSize - result.sizeBytes();
             double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
             double seconds = result.elapsedMs() / 1000.0;
-            out.printf("%-18s %12d %10.2f %9.2f%n",
+            out.printf(Locale.ROOT, "%-18s %12d %10.2f %9.2f%n",
                     result.benchmarkCase().label(),
                     result.sizeBytes(),
                     savedPct,
@@ -259,7 +262,7 @@ public class BenchmarkRunner {
         }
         out.println();
         if (best != null) {
-            out.printf("Best reduction: %s (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
+            out.printf(Locale.ROOT, "Best reduction: %s (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
         } else {
             out.println("Best reduction: none (all cases failed)");
         }
@@ -279,7 +282,7 @@ public class BenchmarkRunner {
         out.println("  \"input\": \"" + escapeJson(inputJar.toString()) + "\",");
         out.println("  \"originalSize\": " + originalSize + ",");
         out.println("  \"bestMode\": \"" + (best != null ? escapeJson(best.benchmarkCase().label()) : "none") + "\",");
-        out.printf("  \"bestReductionPercent\": %.4f,%n", bestSavedPct);
+        out.printf(Locale.ROOT, "  \"bestReductionPercent\": %.4f,%n", bestSavedPct);
         out.println("  \"bestTimeSeconds\": " + bestSeconds + ",");
         out.println("  \"results\": [");
         for (int i = 0; i < CASES.size(); i++) {
@@ -297,8 +300,8 @@ public class BenchmarkRunner {
                 double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
                 double seconds = result.elapsedMs() / 1000.0;
                 out.println("      \"sizeBytes\": " + result.sizeBytes() + ",");
-                out.printf("      \"savedPercent\": %.4f,%n", savedPct);
-                out.printf("      \"elapsedSeconds\": %.4f,%n", seconds);
+                out.printf(Locale.ROOT, "      \"savedPercent\": %.4f,%n", savedPct);
+                out.printf(Locale.ROOT, "      \"elapsedSeconds\": %.4f,%n", seconds);
                 out.println("      \"elapsedMs\": " + result.elapsedMs());
             }
             out.print("    }");
