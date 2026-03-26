@@ -202,34 +202,34 @@ jobs:
           fi
 
           java -jar "${CLI_JAR}" example-project/target/demo-app.jar --benchmark --benchmark-format json \
-            --proguard-config example-project/proguard.conf > demo-app.json &
+            --proguard-config example-project/proguard.conf > demo-app.json 2>demo-app.log &
           PID_DEMO=$!
 
           java -jar "${CLI_JAR}" jstall-full.jar --benchmark --benchmark-format json \
             --proguard-options "-keep class me.bechberger.jstall.cli.**" \
             --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**" \
-            --proguard-options "-dontwarn" > jstall.json &
+            --proguard-options "-dontwarn" > jstall.json 2>jstall.log &
           PID_JSTALL=$!
 
           java -jar "${CLI_JAR}" jstall-minimal.jar --benchmark --benchmark-format json \
             --proguard-options "-keep class me.bechberger.jstall.cli.**" \
             --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**" \
-            --proguard-options "-dontwarn" > jstall-minimal.json &
+            --proguard-options "-dontwarn" > jstall-minimal.json 2>jstall-minimal.log &
           PID_JSTALL_MIN=$!
 
           java -jar "${CLI_JAR}" condensed-data.jar --benchmark --benchmark-format json \
             --proguard-options "-dontwarn" \
-            --proguard-options "-keep class **.cli.** { *; }" > condensed-data.json &
+            --proguard-options "-keep class **.cli.** { *; }" > condensed-data.json 2>condensed-data.log &
           PID_CD=$!
 
           java -jar "${CLI_JAR}" condensed-data-linux-amd64.jar --benchmark --benchmark-format json \
             --proguard-options "-dontwarn" \
-            --proguard-options "-keep class **.cli.** { *; }" > condensed-data-linux-amd64.json &
+            --proguard-options "-keep class **.cli.** { *; }" > condensed-data-linux-amd64.json 2>condensed-data-linux-amd64.log &
           PID_CD_AMD64=$!
 
           java -jar "${CLI_JAR}" condensed-data-linux-amd64-inflaterless.jar --benchmark --benchmark-format json \
             --proguard-options "-dontwarn" \
-            --proguard-options "-keep class **.cli.** { *; }" > condensed-data-linux-amd64-inflaterless.json &
+            --proguard-options "-keep class **.cli.** { *; }" > condensed-data-linux-amd64-inflaterless.json 2>condensed-data-linux-amd64-inflaterless.log &
           PID_CD_INFLATERLESS=$!
 
           echo "Waiting for all benchmarks to complete..."
@@ -240,6 +240,13 @@ jobs:
           if [ "$FAIL" -ne 0 ]; then
             echo "::warning::One or more benchmark processes exited with non-zero status"
           fi
+          echo "--- Benchmark logs ---"
+          for LOG in demo-app.log jstall.log jstall-minimal.log condensed-data.log condensed-data-linux-amd64.log condensed-data-linux-amd64-inflaterless.log; do
+            if [ -s "$LOG" ]; then
+              echo "=== $LOG ==="
+              cat "$LOG"
+            fi
+          done
 
           python3 <<'ENDPYTHON' > benchmark-summary.md
           import json
@@ -263,15 +270,26 @@ jobs:
               ("condensed-data-linux-amd64-inflaterless.jar", "condensed-data-linux-amd64-inflaterless.json"),
           ]
 
+          import os
+
           data = {}
           for _, path in columns:
-              with open(path, "r", encoding="utf-8") as f:
-                  doc = json.load(f)
-              rows = {r["mode"]: r for r in doc["results"]}
-              data[path] = {
-                  "doc": doc,
-                  "rows": rows,
-              }
+              try:
+                  if os.path.getsize(path) == 0:
+                      raise ValueError(f"{path} is empty")
+                  with open(path, "r", encoding="utf-8") as f:
+                      doc = json.load(f)
+                  rows = {r["mode"]: r for r in doc["results"]}
+                  data[path] = {
+                      "doc": doc,
+                      "rows": rows,
+                  }
+              except Exception as e:
+                  print(f"WARNING: Failed to load {path}: {e}", flush=True)
+                  data[path] = {
+                      "doc": {"input": path, "originalSize": 0, "bestMode": "none", "bestReductionPercent": 0.0, "bestTimeSeconds": 0},
+                      "rows": {},
+                  }
 
           print("## Benchmark Results (ubuntu-latest, Java 21)")
           print()
@@ -279,7 +297,10 @@ jobs:
               doc = data[path]["doc"]
               print(f"- input: `{doc['input']}`")
               print(f"- original size: `{doc['originalSize']}` bytes")
-              print(f"- best-reduction: `{doc['bestMode']}` ({doc['bestReductionPercent']:.2f}%) in {doc['bestTimeSeconds']}s")
+              if doc["bestMode"] == "none":
+                  print("- best-reduction: **failed** (benchmark crashed)")
+              else:
+                  print(f"- best-reduction: `{doc['bestMode']}` ({doc['bestReductionPercent']:.2f}%) in {doc['bestTimeSeconds']}s")
               print()
 
           print("### Reduction (%)")
