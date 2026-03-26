@@ -208,18 +208,46 @@ jobs:
             exit 1
           fi
 
+          COMPRESSION_MODES=(default zopfli)
+          BENCH_CASES=(
+            "demo-app|example-project/target/demo-app.jar|demo-app.json|demo-app.log|demo-app"
+            "jstall|jstall-full.jar|jstall.json|jstall.log|jstall"
+            "jstall-min|jstall-minimal.jar|jstall-minimal.json|jstall-minimal.log|jstall"
+            "condensed-data|condensed-data.jar|condensed-data.json|condensed-data.log|condensed"
+            "cd-amd64|condensed-data-linux-amd64.jar|condensed-data-linux-amd64.json|condensed-data-linux-amd64.log|condensed"
+            "cd-inflaterless|condensed-data-linux-amd64-inflaterless.jar|condensed-data-linux-amd64-inflaterless.json|condensed-data-linux-amd64-inflaterless.log|condensed"
+          )
+
+          set_pg_args() {
+            local profile="$1"
+            PG_ARGS=()
+            case "$profile" in
+              demo-app)
+                PG_ARGS=(--proguard-config example-project/proguard.conf)
+                ;;
+              jstall)
+                PG_ARGS=(
+                  --proguard-options "-keep class me.bechberger.jstall.cli.**"
+                  --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**"
+                  --proguard-options "-dontwarn"
+                )
+                ;;
+              condensed)
+                PG_ARGS=(
+                  --proguard-options "-dontwarn"
+                  --proguard-options "-keep class **.cli.** { *; }"
+                )
+                ;;
+            esac
+          }
+
           echo "Generating jars for each compression mode (including ProGuard variants) and checking --help exit codes..."
           mkdir -p generated-help-check
-          for INPUT_JAR in \
-            example-project/target/demo-app.jar \
-            jstall-full.jar \
-            jstall-minimal.jar \
-            condensed-data.jar \
-            condensed-data-linux-amd64.jar \
-            condensed-data-linux-amd64-inflaterless.jar
-          do
+          for CASE in "${BENCH_CASES[@]}"; do
+            IFS='|' read -r LABEL INPUT_JAR JSON_PATH LOG_PATH PG_PROFILE <<< "$CASE"
             BASE_NAME="$(basename "$INPUT_JAR" .jar)"
-            for MODE in default zopfli; do
+            set_pg_args "$PG_PROFILE"
+            for MODE in "${COMPRESSION_MODES[@]}"; do
               OUTPUT_JAR="generated-help-check/${BASE_NAME}-${MODE}.jar"
               echo "Generating $OUTPUT_JAR from $INPUT_JAR with --compression $MODE"
               java -jar "${CLI_JAR}" "$INPUT_JAR" "$OUTPUT_JAR" --compression "$MODE" > /dev/null
@@ -227,25 +255,6 @@ jobs:
               java -jar "$OUTPUT_JAR" --help > /dev/null
 
               PROGUARD_OUTPUT_JAR="generated-help-check/${BASE_NAME}-${MODE}-proguard.jar"
-              PG_ARGS=()
-              case "$INPUT_JAR" in
-                example-project/target/demo-app.jar)
-                  PG_ARGS=(--proguard-config example-project/proguard.conf)
-                  ;;
-                jstall-full.jar|jstall-minimal.jar)
-                  PG_ARGS=(
-                    --proguard-options "-keep class me.bechberger.jstall.cli.**"
-                    --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**"
-                    --proguard-options "-dontwarn"
-                  )
-                  ;;
-                condensed-data.jar|condensed-data-linux-amd64.jar|condensed-data-linux-amd64-inflaterless.jar)
-                  PG_ARGS=(
-                    --proguard-options "-dontwarn"
-                    --proguard-options "-keep class **.cli.** { *; }"
-                  )
-                  ;;
-              esac
               echo "Generating $PROGUARD_OUTPUT_JAR from $INPUT_JAR with --compression $MODE --proguard"
               java -jar "${CLI_JAR}" "$INPUT_JAR" "$PROGUARD_OUTPUT_JAR" --compression "$MODE" --proguard "${PG_ARGS[@]}" > /dev/null
               echo "--help check: $PROGUARD_OUTPUT_JAR"
@@ -253,72 +262,46 @@ jobs:
             done
           done
 
-          java -jar "${CLI_JAR}" example-project/target/demo-app.jar --benchmark --benchmark-format json \
-            --proguard-config example-project/proguard.conf > demo-app.json 2>demo-app.log &
-          PID_DEMO=$!
-
-          java -jar "${CLI_JAR}" jstall-full.jar --benchmark --benchmark-format json \
-            --proguard-options "-keep class me.bechberger.jstall.cli.**" \
-            --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**" \
-            --proguard-options "-dontwarn" > jstall.json 2>jstall.log &
-          PID_JSTALL=$!
-
-          java -jar "${CLI_JAR}" jstall-minimal.jar --benchmark --benchmark-format json \
-            --proguard-options "-keep class me.bechberger.jstall.cli.**" \
-            --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**" \
-            --proguard-options "-dontwarn" > jstall-minimal.json 2>jstall-minimal.log &
-          PID_JSTALL_MIN=$!
-
-          java -jar "${CLI_JAR}" condensed-data.jar --benchmark --benchmark-format json \
-            --proguard-options "-dontwarn" \
-            --proguard-options "-keep class **.cli.** { *; }" > condensed-data.json 2>condensed-data.log &
-          PID_CD=$!
-
-          java -jar "${CLI_JAR}" condensed-data-linux-amd64.jar --benchmark --benchmark-format json \
-            --proguard-options "-dontwarn" \
-            --proguard-options "-keep class **.cli.** { *; }" > condensed-data-linux-amd64.json 2>condensed-data-linux-amd64.log &
-          PID_CD_AMD64=$!
-
-          java -jar "${CLI_JAR}" condensed-data-linux-amd64-inflaterless.jar --benchmark --benchmark-format json \
-            --proguard-options "-dontwarn" \
-            --proguard-options "-keep class **.cli.** { *; }" > condensed-data-linux-amd64-inflaterless.json 2>condensed-data-linux-amd64-inflaterless.log &
-          PID_CD_INFLATERLESS=$!
+          : > benchmark-cases.tsv
+          PIDS=()
+          echo "Starting benchmark runs..."
+          for CASE in "${BENCH_CASES[@]}"; do
+            IFS='|' read -r LABEL INPUT_JAR JSON_PATH LOG_PATH PG_PROFILE <<< "$CASE"
+            set_pg_args "$PG_PROFILE"
+            printf '%s|%s\n' "$LABEL" "$JSON_PATH" >> benchmark-cases.tsv
+            java -jar "${CLI_JAR}" "$INPUT_JAR" --benchmark --benchmark-format json "${PG_ARGS[@]}" > "$JSON_PATH" 2> "$LOG_PATH" &
+            PIDS+=("$!")
+          done
 
           echo "Waiting for all benchmarks to complete..."
           FAIL=0
-          for PID in $PID_DEMO $PID_JSTALL $PID_JSTALL_MIN $PID_CD $PID_CD_AMD64 $PID_CD_INFLATERLESS; do
+          for PID in "${PIDS[@]}"; do
             wait "$PID" || FAIL=1
           done
           if [ "$FAIL" -ne 0 ]; then
             echo "::warning::One or more benchmark processes exited with non-zero status"
           fi
+
           echo "--- Benchmark logs ---"
-          for LOG in demo-app.log jstall.log jstall-minimal.log condensed-data.log condensed-data-linux-amd64.log condensed-data-linux-amd64-inflaterless.log; do
-            if [ -s "$LOG" ]; then
-              echo "=== $LOG ==="
-              cat "$LOG"
+          for CASE in "${BENCH_CASES[@]}"; do
+            IFS='|' read -r LABEL INPUT_JAR JSON_PATH LOG_PATH PG_PROFILE <<< "$CASE"
+            if [ -s "$LOG_PATH" ]; then
+              echo "=== $LOG_PATH ==="
+              cat "$LOG_PATH"
             fi
           done
 
           python3 <<'ENDPYTHON' > benchmark-summary.md
           import json, os, sys
 
-          mode_order = [
-              "default",
-              "zopfli",
-              "proguard default",
-              "proguard zopfli",
-              "proguard",
-          ]
-
-          columns = [
-              ("demo-app", "demo-app.json"),
-              ("jstall", "jstall.json"),
-              ("jstall-min", "jstall-minimal.json"),
-              ("condensed-data", "condensed-data.json"),
-              ("cd-amd64", "condensed-data-linux-amd64.json"),
-              ("cd-inflaterless", "condensed-data-linux-amd64-inflaterless.json"),
-          ]
+          columns = []
+          with open("benchmark-cases.tsv", "r", encoding="utf-8") as f:
+              for line in f:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  label, path = line.split("|", 1)
+                  columns.append((label, path))
 
           data = {}
           for label, path in columns:
@@ -332,11 +315,25 @@ jobs:
               except Exception as e:
                   print(f"<!-- WARNING: {path}: {e} -->", file=sys.stderr)
                   data[label] = {
-                      "doc": {"input": path, "originalSize": 0,
-                              "bestMode": "none", "bestReductionPercent": 0.0,
-                              "bestTimeSeconds": 0},
+                      "doc": {
+                          "input": path,
+                          "originalSize": 0,
+                          "bestMode": "none",
+                          "bestReductionPercent": 0.0,
+                          "bestTimeSeconds": 0,
+                          "results": [],
+                      },
                       "rows": {},
                   }
+
+          mode_order = []
+          seen_modes = set()
+          for label, _ in columns:
+              for row in data[label]["doc"].get("results", []):
+                  mode = row.get("mode")
+                  if mode and mode not in seen_modes:
+                      seen_modes.add(mode)
+                      mode_order.append(mode)
 
           print("## Benchmark Results\n")
           for label, _ in columns:
@@ -369,6 +366,20 @@ jobs:
                       vals.append("--")
                   else:
                       vals.append(f"{row['savedPercent']:.1f}")
+              print("| " + mode + " | " + " | ".join(vals) + " |")
+
+          print()
+          print("### Reduced Size (MB)\n")
+          print(header)
+          print(sep)
+          for mode in mode_order:
+              vals = []
+              for label, _ in columns:
+                  row = data[label]["rows"].get(mode)
+                  if row is None or row.get("failed"):
+                      vals.append("--")
+                  else:
+                      vals.append(f"{row['sizeBytes'] / (1024 * 1024):.3f}")
               print("| " + mode + " | " + " | ".join(vals) + " |")
 
           print()
