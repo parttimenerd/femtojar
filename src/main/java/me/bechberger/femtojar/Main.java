@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 import me.bechberger.femtocli.FemtoCli;
@@ -39,14 +41,23 @@ public class Main implements Callable<Integer> {
     @Option(names = {"--no-bundle-resources"}, description = "Do not bundle resources")
     public boolean noBundleResources = false;
 
-    @Option(names = {"--advanced-mode"}, description = "Advanced ordering mode: package|hill-climb")
-    public String advancedMode;
-
-    @Option(names = {"--advanced-iterations"}, description = "Advanced iterations")
-    public int advancedIterations = -1;
-
     @Option(names = {"--parallel"}, description = "Enable parallel processing")
     public boolean parallel = false;
+
+    @Option(names = {"--proguard"}, description = "Run ProGuard before reencoding")
+    public boolean proguard = false;
+
+    @Option(names = {"--proguard-config"}, description = "Path to ProGuard configuration file")
+    public Path proguardConfig;
+
+    @Option(names = {"--proguard-options"}, description = "Inline ProGuard option (repeatable)")
+    public List<String> proguardOptions;
+
+    @Option(names = {"--proguard-out"}, description = "Separate ProGuard output JAR path")
+    public Path proguardOut;
+
+    @Option(names = {"--no-proguard-default-config"}, description = "Do not prepend the bundled default ProGuard config")
+    public boolean noProguardDefaultConfig = false;
 
     @Option(names = {"--verbose", "--rverbose"}, description = "Enable verbose output")
     public boolean verbose = false;
@@ -54,7 +65,7 @@ public class Main implements Callable<Integer> {
     @Option(names = {"--benchmark"}, description = "Run benchmarks")
     public boolean benchmark = false;
 
-    @Option(names = {"--benchmark-format"}, description = "Benchmark format: text|markdown")
+    @Option(names = {"--benchmark-format"}, description = "Benchmark format: text|markdown|json")
     public String benchmarkFormat = "text";
 
     public static void main(String[] args) {
@@ -85,53 +96,76 @@ public class Main implements Callable<Integer> {
             compression = CompressionMode.MAX;
         }
         boolean bundle = bundleResources && !noBundleResources;
-        AdvancedOrderingMode advMode = null;
-        if (advancedMode != null) {
-            advMode = AdvancedOrderingMode.parse(advancedMode);
-        }
-        int advIterations = advancedIterations;
         boolean par = parallel;
         boolean verb = verbose;
         if (benchmark) {
             BenchmarkRunner.Format format;
             if ("markdown".equalsIgnoreCase(benchmarkFormat)) {
                 format = BenchmarkRunner.Format.MARKDOWN;
+            } else if ("json".equalsIgnoreCase(benchmarkFormat)) {
+                format = BenchmarkRunner.Format.JSON;
             } else if ("text".equalsIgnoreCase(benchmarkFormat)) {
                 format = BenchmarkRunner.Format.TEXT;
             } else {
-                System.err.println("Invalid value for --benchmark-format: " + benchmarkFormat + " (expected: text|markdown)");
+                System.err.println("Invalid value for --benchmark-format: " + benchmarkFormat + " (expected: text|markdown|json)");
                 return 2;
             }
             BenchmarkRunner runner = new BenchmarkRunner(System.out, System.err);
-            return runner.run(inputJar, format);
+            return runner.run(
+                    inputJar,
+                    format,
+                    proguardConfig,
+                    proguardOptions != null ? proguardOptions : Collections.emptyList(),
+                    noProguardDefaultConfig);
         }
         JarReencoder reencoder = new JarReencoder();
+        Path proguardTempFile = null;
         try {
+            // Run ProGuard if requested.
+            Path reencoderInput = inputJar;
+            if (proguard) {
+                try {
+                    Path pgOut;
+                    if (proguardOut != null) {
+                        pgOut = proguardOut;
+                    } else {
+                        proguardTempFile = Files.createTempDirectory("proguard-work-")
+                                .resolve("proguard-out.jar");
+                        pgOut = proguardTempFile;
+                    }
+                    ProGuardRunner.run(inputJar, pgOut,
+                            !noProguardDefaultConfig,
+                            proguardConfig,
+                            proguardOptions != null ? proguardOptions : Collections.emptyList(),
+                            Collections.emptyList());
+                    reencoderInput = pgOut;
+                } catch (IOException e) {
+                    System.err.println("ProGuard failed: " + e.getMessage());
+                    return 1;
+                }
+            }
+
             JarReencoder.ReencodeResult result;
             PrintStream logger = verb ? System.err : null;
             Path outJar = outputJar == null ? inputJar : outputJar;
-            if (inputJar.equals(outJar)) {
+            if (reencoderInput.equals(outJar)) {
                 result = reencoder.reencodeInPlaceBundled(
-                        inputJar,
+                        reencoderInput,
                         compression.useZopfli(),
                         compression.zopfliIterations(),
                         bundle,
                         "cli",
-                        advMode,
-                        advIterations,
                         par,
                         logger);
             } else {
-                long originalSize = Files.size(inputJar);
+                long originalSize = Files.size(reencoderInput);
                 reencoder.rewriteJarBundled(
-                        inputJar,
+                        reencoderInput,
                         outJar,
                         compression.useZopfli(),
                         compression.zopfliIterations(),
                         bundle,
                         "cli",
-                        advMode,
-                        advIterations,
                         par,
                         logger);
                 long newSize = Files.size(outJar);
@@ -150,6 +184,13 @@ public class Main implements Callable<Integer> {
         } catch (IOException ex) {
             System.err.println("Failed to re-encode JAR: " + ex.getMessage());
             return 1;
+        } finally {
+            if (proguardTempFile != null) {
+                try {
+                    Files.deleteIfExists(proguardTempFile);
+                    Files.deleteIfExists(proguardTempFile.getParent());
+                } catch (IOException ignored) {}
+            }
         }
     }
 }

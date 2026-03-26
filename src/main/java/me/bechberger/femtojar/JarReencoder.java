@@ -1,5 +1,8 @@
 package me.bechberger.femtojar;
 
+import com.googlecode.pngtastic.core.processing.zopfli.Options;
+import com.googlecode.pngtastic.core.processing.zopfli.Zopfli;
+
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -11,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Enumeration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
@@ -51,67 +55,35 @@ public class JarReencoder {
 
     /**
      * Re-encodes a JAR file in-place with bundled class compression.
-     *
-         * @param advancedMode     ordering strategy (null = lexical, PACKAGE, HILL_CLIMB)
-         * @param advancedIterations iterations for hill-climb variants
      */
     public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
                                                  int zopfliIterations,
-                                                 boolean bundleResources,
-                                                 AdvancedOrderingMode advancedMode,
-                                                 int advancedIterations) throws IOException {
+                                                 boolean bundleResources) throws IOException {
         return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
-            detectFemtojarVersion(), advancedMode, advancedIterations, false, null);
-        }
+            detectFemtojarVersion(), false, null);
+    }
 
-        public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
-                             int zopfliIterations,
-                             boolean bundleResources,
-                             AdvancedOrderingMode advancedMode,
-                             int advancedIterations,
-                             boolean parallel) throws IOException {
+    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
+                                                 int zopfliIterations,
+                                                 boolean bundleResources,
+                                                 String femtojarVersion) throws IOException {
         return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
-            detectFemtojarVersion(), advancedMode, advancedIterations, parallel, null);
+            femtojarVersion, false, null);
     }
 
     public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
                                                  int zopfliIterations,
                                                  boolean bundleResources,
                                                  String femtojarVersion,
-                                                 AdvancedOrderingMode advancedMode,
-                                                 int advancedIterations) throws IOException {
-        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
-            femtojarVersion, advancedMode, advancedIterations, false, null);
-        }
-
-        public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
-                             int zopfliIterations,
-                             boolean bundleResources,
-                             String femtojarVersion,
-                             AdvancedOrderingMode advancedMode,
-                             int advancedIterations,
-                             boolean parallel) throws IOException {
-        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
-            femtojarVersion, advancedMode, advancedIterations, parallel, null);
-    }
-
-    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
-                                                 int zopfliIterations,
-                                                 boolean bundleResources,
-                                                 String femtojarVersion,
-                                                 AdvancedOrderingMode advancedMode,
-                                                 int advancedIterations,
                                                  PrintStream logger) throws IOException {
         return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
-                femtojarVersion, advancedMode, advancedIterations, false, logger);
+                femtojarVersion, false, logger);
     }
 
     public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
                                                  int zopfliIterations,
                                                  boolean bundleResources,
                                                  String femtojarVersion,
-                                                 AdvancedOrderingMode advancedMode,
-                                                 int advancedIterations,
                                                  boolean parallel,
                                                  PrintStream logger) throws IOException {
         Objects.requireNonNull(jarPath, "jarPath");
@@ -123,7 +95,7 @@ public class JarReencoder {
         Path tempFile = Files.createTempFile(jarPath.getParent(), jarPath.getFileName().toString(), ".tmp");
         try {
             rewriteJarBundled(jarPath, tempFile, useZopfli, zopfliIterations, bundleResources,
-                femtojarVersion, advancedMode, advancedIterations, parallel, logger);
+                femtojarVersion, parallel, logger);
             long newSize = Files.size(tempFile);
             moveIntoPlace(tempFile, jarPath);
             return new ReencodeResult(originalSize, newSize);
@@ -133,19 +105,6 @@ public class JarReencoder {
         }
     }
 
-    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
-                                                 int zopfliIterations,
-                                                 boolean bundleResources,
-                                                 String femtojarVersion) throws IOException {
-        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources, femtojarVersion, null, -1);
-    }
-
-    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
-                                                 int zopfliIterations,
-                                                 boolean bundleResources) throws IOException {
-        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources, detectFemtojarVersion(), null, -1);
-    }
-
     /**
      * Legacy overload - uses lexical ordering.
      */
@@ -153,39 +112,27 @@ public class JarReencoder {
                            int zopfliIterations, boolean bundleResources,
                            String femtojarVersion) throws IOException {
         rewriteJarBundled(sourceJar, targetJar, useZopfli, zopfliIterations, bundleResources,
-            femtojarVersion, null, -1, false, null);
+            femtojarVersion, false, null);
     }
 
     void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
                            int zopfliIterations, boolean bundleResources,
                            String femtojarVersion,
-                           AdvancedOrderingMode advancedMode, int advancedIterations) throws IOException {
+                           boolean parallel) throws IOException {
         rewriteJarBundled(sourceJar, targetJar, useZopfli, zopfliIterations, bundleResources,
-            femtojarVersion, advancedMode, advancedIterations, false, null);
-        }
-
-        void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
-                   int zopfliIterations, boolean bundleResources,
-                   String femtojarVersion,
-                   AdvancedOrderingMode advancedMode, int advancedIterations,
-                   boolean parallel) throws IOException {
-        rewriteJarBundled(sourceJar, targetJar, useZopfli, zopfliIterations, bundleResources,
-            femtojarVersion, advancedMode, advancedIterations, parallel, null);
+            femtojarVersion, parallel, null);
     }
 
     /**
      * Rewrites a JAR file with bundled class compression.
-     *
-        * @param advancedMode ordering strategy (null = lexical, PACKAGE, HILL_CLIMB)
-        * @param advancedIterations iterations for hill-climb variants
-        * @param parallel evaluate random swap candidates in parallel
+      *
+      * @param parallel currently unused, kept for API compatibility
      * @param logger optional PrintStream for verbose logging
      */
     void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
                            int zopfliIterations, boolean bundleResources,
                            String femtojarVersion,
-                           AdvancedOrderingMode advancedMode, int advancedIterations,
-                          boolean parallel,
+                                    boolean parallel,
                            PrintStream logger) throws IOException {
         try (JarFile jarFile = new JarFile(sourceJar.toFile())) {
             if (isAlreadyBundledJar(jarFile)) {
@@ -242,10 +189,9 @@ public class JarReencoder {
                 }
             }
 
-            // Find best ordering of classes
-                List<String> bestClassOrder = ClassOrderingOptimizer.findBestOrdering(new ArrayList<>(classEntries.keySet()),
-                    classEntries, bundledResourceEntries, useZopfli, zopfliIterations,
-                    advancedMode, advancedIterations, parallel, logger);
+            // Keep class order deterministic and stable.
+            List<String> bestClassOrder = new ArrayList<>(classEntries.keySet());
+            Collections.sort(bestClassOrder);
 
             // Build blob with best ordering
             ByteArrayOutputStream blob = new ByteArrayOutputStream();
@@ -269,10 +215,10 @@ public class JarReencoder {
             }
 
             // Serialize the index
-            byte[] indexData = ClassOrderingOptimizer.serializeIndex(classIndex, resourceIndex, blob.size());
+            byte[] indexData = serializeIndex(classIndex, resourceIndex, blob.size());
 
             // New blob format: [indexSize][index][classBlob]
-            byte[] packedBlob = ClassOrderingOptimizer.packBlob(indexData, blob.toByteArray());
+            byte[] packedBlob = packBlob(indexData, blob.toByteArray());
 
             // Compress the packed blob in one stream
             byte[] compressedBlob = compressClassBlob(packedBlob, useZopfli, zopfliIterations);
@@ -303,8 +249,62 @@ public class JarReencoder {
 
     private byte[] compressClassBlob(byte[] data, boolean useZopfli, int zopfliIterations) throws IOException {
         return useZopfli
-                ? ClassOrderingOptimizer.compressWithZopfli(data, zopfliIterations)
-                : ClassOrderingOptimizer.compressWithDeflater(data);
+                ? compressWithZopfli(data, zopfliIterations)
+                : compressWithDeflater(data);
+    }
+
+    private static byte[] compressWithZopfli(byte[] data, int iterations) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Options options = new Options(Options.OutputFormat.ZLIB, Options.BlockSplitting.FIRST, iterations);
+        Zopfli zopfli = new Zopfli(8 * 1024 * 1024);
+        zopfli.compress(options, data, baos);
+        return baos.toByteArray();
+    }
+
+    private static byte[] compressWithDeflater(byte[] data) throws IOException {
+        Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION, false);
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream(data.length);
+            try (DeflaterOutputStream dos = new DeflaterOutputStream(baos, deflater, 8192)) {
+                dos.write(data);
+            }
+            return baos.toByteArray();
+        } finally {
+            deflater.end();
+        }
+    }
+
+    private static byte[] packBlob(byte[] indexData, byte[] classBlobData) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(indexData.length + classBlobData.length + 4);
+        try (java.io.DataOutputStream dos = new java.io.DataOutputStream(baos)) {
+            dos.writeInt(indexData.length);
+            dos.write(indexData);
+            dos.write(classBlobData);
+        }
+        return baos.toByteArray();
+    }
+
+    private static byte[] serializeIndex(Map<String, int[]> classIndex,
+                                         Map<String, int[]> resourceIndex,
+                                         int totalUncompressedSize) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (java.io.DataOutputStream dos = new java.io.DataOutputStream(baos)) {
+            dos.writeInt(1);
+            dos.writeInt(classIndex.size());
+            for (Map.Entry<String, int[]> entry : classIndex.entrySet()) {
+                dos.writeUTF(entry.getKey());
+                dos.writeInt(entry.getValue()[0]);
+                dos.writeInt(entry.getValue()[1]);
+            }
+            dos.writeInt(resourceIndex.size());
+            for (Map.Entry<String, int[]> entry : resourceIndex.entrySet()) {
+                dos.writeUTF(entry.getKey());
+                dos.writeInt(entry.getValue()[0]);
+                dos.writeInt(entry.getValue()[1]);
+            }
+            dos.writeInt(totalUncompressedSize);
+        }
+        return baos.toByteArray();
     }
 
     private static boolean isMetaInfEntry(String entryName) {

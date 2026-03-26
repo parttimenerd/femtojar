@@ -63,23 +63,6 @@
                 </executions>
             </plugin>
             <plugin>
-                <groupId>com.github.wvengen</groupId>
-                <artifactId>proguard-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals><goal>proguard</goal></goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <obfuscate>true</obfuscate>
-                    <injar>${project.artifactId}.jar</injar>
-                    <outjar>${project.artifactId}-small.jar</outjar>
-                    <outputDirectory>${project.build.directory}</outputDirectory>
-                    <proguardInclude>${basedir}/proguard.conf</proguardInclude>
-                </configuration>
-            </plugin>
-            <plugin>
                 <groupId>me.bechberger</groupId>
                 <artifactId>femtojar</artifactId>
                 <version>0.1.0</version>
@@ -93,9 +76,13 @@
                     </execution>
                 </executions>
                 <configuration>
+                    <proguard>
+                        <enabled>true</enabled>
+                        <configFile>${basedir}/proguard.conf</configFile>
+                    </proguard>
                     <jars>
                         <jar>
-                            <in>${project.artifactId}-small.jar</in>
+                            <in>${project.artifactId}.jar</in>
                             <out>${project.artifactId}-optimized.jar</out>
                         </jar>
                     </jars>

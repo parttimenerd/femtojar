@@ -5,8 +5,10 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -14,14 +16,24 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * Runs non-destructive JAR reencoding benchmarks across a matrix of compression settings.
+ * Runs non-destructive JAR benchmarks across compression and ProGuard modes.
  */
 public class BenchmarkRunner {
 
     public enum Format {
         TEXT,
-        MARKDOWN
+        MARKDOWN,
+        JSON
     }
+
+    private static final List<BenchmarkCase> CASES = List.of(
+            new BenchmarkCase(CompressionMode.DEFAULT, false),
+            new BenchmarkCase(CompressionMode.ZOPFLI, false),
+            new BenchmarkCase(CompressionMode.MAX, false),
+            new BenchmarkCase(CompressionMode.DEFAULT, true),
+            new BenchmarkCase(CompressionMode.ZOPFLI, true),
+            new BenchmarkCase(CompressionMode.MAX, true),
+            new BenchmarkCase(null, true));
 
     private final PrintStream out;
     private final PrintStream err;
@@ -32,13 +44,20 @@ public class BenchmarkRunner {
     }
 
     /**
-     * Runs benchmark across compression modes and resource bundling options.
+     * Runs benchmark across fixed cases.
      *
      * @param inputJar path to input JAR
-     * @param format output format (text or markdown)
+     * @param format output format (text, markdown, json)
+     * @param proguardConfig optional ProGuard config file
+     * @param proguardOptions optional inline ProGuard options
+     * @param noProguardDefaultConfig whether to disable bundled default ProGuard config
      * @return exit code (0 on success, 1 on failure)
      */
-    public int run(Path inputJar, Format format) {
+    public int run(Path inputJar,
+                   Format format,
+                   Path proguardConfig,
+                   List<String> proguardOptions,
+                   boolean noProguardDefaultConfig) {
         long originalSize;
         try {
             originalSize = Files.size(inputJar);
@@ -47,25 +66,19 @@ public class BenchmarkRunner {
             return 1;
         }
 
-        List<BenchmarkCase> cases = new ArrayList<>();
-        for (CompressionMode mode : List.of(CompressionMode.DEFAULT, CompressionMode.ZOPFLI, CompressionMode.MAX)) {
-            cases.add(new BenchmarkCase(mode, false, null, -1));
-            cases.add(new BenchmarkCase(mode, true, null, -1));
-        }
-        // Extra default-mode runs with advanced ordering.
-        cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, AdvancedOrderingMode.PACKAGE, -1));
-        cases.add(new BenchmarkCase(CompressionMode.DEFAULT, false, AdvancedOrderingMode.HILL_CLIMB, 1000));
         List<BenchmarkResult> results = new ArrayList<>();
+        List<String> pgOptions = proguardOptions == null ? Collections.emptyList() : proguardOptions;
 
         if (format == Format.TEXT) {
             out.println("Benchmarking " + inputJar + " (original size: " + originalSize + " bytes)");
         }
 
-        int workerCount = Math.max(1, Math.min(cases.size(), Runtime.getRuntime().availableProcessors()));
+        int workerCount = Math.max(1, Math.min(CASES.size(), Runtime.getRuntime().availableProcessors()));
         ExecutorService executor = Executors.newFixedThreadPool(workerCount);
         List<Future<BenchmarkResult>> futures = new ArrayList<>();
-        for (BenchmarkCase benchmarkCase : cases) {
-            futures.add(executor.submit((Callable<BenchmarkResult>) () -> runSingleCase(inputJar, benchmarkCase)));
+        for (BenchmarkCase benchmarkCase : CASES) {
+            futures.add(executor.submit((Callable<BenchmarkResult>) () ->
+                    runSingleCase(inputJar, benchmarkCase, proguardConfig, pgOptions, noProguardDefaultConfig)));
         }
         executor.shutdown();
 
@@ -92,7 +105,6 @@ public class BenchmarkRunner {
             }
         }
 
-        results.sort(Comparator.comparingLong(BenchmarkResult::sizeBytes));
         if (results.isEmpty()) {
             err.println("No benchmark results produced");
             return 1;
@@ -102,31 +114,56 @@ public class BenchmarkRunner {
         return 0;
     }
 
-    private BenchmarkResult runSingleCase(Path inputJar, BenchmarkCase benchmarkCase) throws IOException {
+    private BenchmarkResult runSingleCase(Path inputJar,
+                                          BenchmarkCase benchmarkCase,
+                                          Path proguardConfig,
+                                          List<String> proguardOptions,
+                                          boolean noProguardDefaultConfig) throws IOException {
+        Path tempProguardOut = null;
         Path tempOut = null;
         try {
-            if (inputJar.getParent() != null) {
-                tempOut = Files.createTempFile(inputJar.getParent(), "femtojar-bench-", ".jar");
-            } else {
-                tempOut = Files.createTempFile("femtojar-bench-", ".jar");
+            Path currentInput = inputJar;
+            long startNs = System.nanoTime();
+
+            if (benchmarkCase.proguard()) {
+                tempProguardOut = createTempJar(inputJar);
+                Files.deleteIfExists(tempProguardOut);
+                List<String> effectiveOptions = proguardOptions;
+                if ((effectiveOptions == null || effectiveOptions.isEmpty()) && proguardConfig == null) {
+                    // Keep benchmark mode resilient for minimal test jars.
+                    effectiveOptions = List.of("-keep class ** { *; }", "-dontwarn");
+                }
+                ProGuardRunner.run(
+                        inputJar,
+                        tempProguardOut,
+                        !noProguardDefaultConfig,
+                        proguardConfig,
+                        effectiveOptions,
+                        Collections.emptyList());
+                currentInput = tempProguardOut;
             }
 
-            JarReencoder reencoder = new JarReencoder();
-            long startNs = System.nanoTime();
-            reencoder.rewriteJarBundled(
-                    inputJar,
-                    tempOut,
-                    benchmarkCase.mode.useZopfli(),
-                    benchmarkCase.mode.zopfliIterations(),
-                    benchmarkCase.bundleResources,
-                    "cli-benchmark",
-                    benchmarkCase.advancedMode,
-                    benchmarkCase.advancedIterations);
+            long size;
+            if (benchmarkCase.mode() == null) {
+                size = Files.size(currentInput);
+            } else {
+                tempOut = createTempJar(inputJar);
+                JarReencoder reencoder = new JarReencoder();
+                reencoder.rewriteJarBundled(
+                        currentInput,
+                        tempOut,
+                        benchmarkCase.mode().useZopfli(),
+                        benchmarkCase.mode().zopfliIterations(),
+                        true,
+                        "cli-benchmark",
+                        false,
+                        null);
+                size = Files.size(tempOut);
+            }
+
             long elapsedNs = System.nanoTime() - startNs;
-            long size = Files.size(tempOut);
             long elapsedMs = elapsedNs / 1_000_000;
-            BenchmarkResult result = new BenchmarkResult(benchmarkCase, size, elapsedMs);
-            return result;
+            return new BenchmarkResult(benchmarkCase, size, elapsedMs);
         } finally {
             if (tempOut != null) {
                 try {
@@ -135,89 +172,139 @@ public class BenchmarkRunner {
                     // Ignore temp cleanup issues.
                 }
             }
+            if (tempProguardOut != null) {
+                try {
+                    Files.deleteIfExists(tempProguardOut);
+                } catch (IOException ignored) {
+                    // Ignore temp cleanup issues.
+                }
+            }
         }
     }
 
+    private static Path createTempJar(Path inputJar) throws IOException {
+        if (inputJar.getParent() != null) {
+            return Files.createTempFile(inputJar.getParent(), "femtojar-bench-", ".jar");
+        }
+        return Files.createTempFile("femtojar-bench-", ".jar");
+    }
+
     private void render(Format format, Path inputJar, long originalSize, List<BenchmarkResult> results) {
-        BenchmarkResult best = results.get(0);
-        BenchmarkResult defaultConfig = results.stream()
-                .filter(result -> result.benchmarkCase().mode() == CompressionMode.DEFAULT
-                && result.benchmarkCase().bundleResources()
-                && result.benchmarkCase().advancedMode() == null)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Benchmark results missing default baseline"));
-        double bestSizeDeltaPct = defaultConfig.sizeBytes() == 0
-            ? 0d
-            : ((defaultConfig.sizeBytes() - best.sizeBytes()) * 100.0) / defaultConfig.sizeBytes();
-        double bestTimeDeltaPct = defaultConfig.elapsedMs() == 0
-            ? 0d
-            : ((best.elapsedMs() - defaultConfig.elapsedMs()) * 100.0) / defaultConfig.elapsedMs();
+        Map<String, BenchmarkResult> byLabel = results.stream().collect(
+                java.util.stream.Collectors.toMap(r -> r.benchmarkCase().label(), r -> r));
+        BenchmarkResult defaultConfig = byLabel.get("default");
+        if (defaultConfig == null) {
+            throw new IllegalStateException("Benchmark results missing default baseline");
+        }
+
+        BenchmarkResult best = results.stream()
+                .min(Comparator.comparingLong(BenchmarkResult::sizeBytes))
+                .orElseThrow();
+        long bestSavedBytes = originalSize - best.sizeBytes();
+        double bestSavedPct = originalSize == 0 ? 0d : (bestSavedBytes * 100.0) / originalSize;
+        long bestSeconds = Math.max(0L, Math.round(best.elapsedMs() / 1000.0));
+
+        if (format == Format.JSON) {
+            renderJson(inputJar, originalSize, best, bestSavedPct, bestSeconds, byLabel);
+            return;
+        }
 
         if (format == Format.MARKDOWN) {
             out.println("## femtojar benchmark");
             out.println();
             out.println("- input: `" + inputJar + "`");
             out.println("- original size: `" + originalSize + "` bytes");
-            out.println("- default baseline: `" + defaultConfig.benchmarkCase().label() + "`");
-            out.println("- best setting: `" + best.benchmarkCase().label() + "`");
-            out.printf("- best relative size vs default: `%.2f%%`%n", bestSizeDeltaPct);
-            out.printf("- best relative time vs default: `%.2f%%`%n", bestTimeDeltaPct);
+            out.printf("- best-reduction: `%s` (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
             out.println();
-            out.println("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(%) | time vs default(%) |");
-            out.println("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
-            for (BenchmarkResult result : results) {
+            out.println("| mode | size(bytes) | saved(%) | time(s) |");
+            out.println("| --- | ---: | ---: | ---: |");
+            for (BenchmarkCase benchmarkCase : CASES) {
+                BenchmarkResult result = byLabel.get(benchmarkCase.label());
+                if (result == null) {
+                    continue;
+                }
                 long saved = originalSize - result.sizeBytes();
                 double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
-                double sizeDeltaPct = defaultConfig.sizeBytes() == 0 ? 0d : ((defaultConfig.sizeBytes() - result.sizeBytes()) * 100.0) / defaultConfig.sizeBytes();
-                double timeDeltaPct = defaultConfig.elapsedMs() == 0 ? 0d : ((result.elapsedMs() - defaultConfig.elapsedMs()) * 100.0) / defaultConfig.elapsedMs();
-                out.printf("| %s | %d | %d | %.2f | %d | %.2f | %.2f |%n",
+                double seconds = result.elapsedMs() / 1000.0;
+                out.printf("| %s | %d | %.2f | %.2f |%n",
                         result.benchmarkCase().label(),
                         result.sizeBytes(),
-                        saved,
                         savedPct,
-                        result.elapsedMs(),
-                        sizeDeltaPct,
-                        timeDeltaPct);
+                        seconds);
             }
             return;
         }
 
         out.println();
-        out.println("Result table (sorted by output size):");
-        out.println("mode                                   size(bytes)   saved(bytes)   saved(%)   time(ms)   size-vs-default(%)   time-vs-default(%)");
-        for (BenchmarkResult result : results) {
+        out.println("Result table:");
+        out.println("mode                size(bytes)   saved(%)   time(s)");
+        for (BenchmarkCase benchmarkCase : CASES) {
+            BenchmarkResult result = byLabel.get(benchmarkCase.label());
+            if (result == null) {
+                continue;
+            }
             long saved = originalSize - result.sizeBytes();
             double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
-            double sizeDeltaPct = defaultConfig.sizeBytes() == 0 ? 0d : ((defaultConfig.sizeBytes() - result.sizeBytes()) * 100.0) / defaultConfig.sizeBytes();
-            double timeDeltaPct = defaultConfig.elapsedMs() == 0 ? 0d : ((result.elapsedMs() - defaultConfig.elapsedMs()) * 100.0) / defaultConfig.elapsedMs();
-            out.printf("%-38s %12d %13d %9.2f %10d %20.2f %19.2f%n",
+            double seconds = result.elapsedMs() / 1000.0;
+            out.printf("%-18s %12d %10.2f %9.2f%n",
                     result.benchmarkCase().label(),
                     result.sizeBytes(),
-                    saved,
                     savedPct,
-                    result.elapsedMs(),
-                    sizeDeltaPct,
-                    timeDeltaPct);
+                    seconds);
         }
-
         out.println();
-        out.println("Best setting: " + best.benchmarkCase().label());
-        out.printf("Best relative size vs default: %.2f%%%n", bestSizeDeltaPct);
-        out.printf("Best relative time vs default: %.2f%%%n", bestTimeDeltaPct);
+        out.printf("Best reduction: %s (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
+        out.printf("Default baseline: %d bytes%n", defaultConfig.sizeBytes());
     }
 
-    private record BenchmarkCase(CompressionMode mode, boolean bundleResources,
-                                   AdvancedOrderingMode advancedMode, int advancedIterations) {
-        private String label() {
-            String modeLabel = mode.cliValue();
-            String resources = bundleResources ? "resources=on" : "resources=off";
-            String advancedLabel = "";
-            if (advancedMode == AdvancedOrderingMode.PACKAGE) {
-                advancedLabel = ", order=package";
-            } else if (advancedMode == AdvancedOrderingMode.HILL_CLIMB) {
-                advancedLabel = ", hill-climb=" + advancedIterations;
+    private void renderJson(Path inputJar,
+                            long originalSize,
+                            BenchmarkResult best,
+                            double bestSavedPct,
+                            long bestSeconds,
+                            Map<String, BenchmarkResult> byLabel) {
+        out.println("{");
+        out.println("  \"input\": \"" + escapeJson(inputJar.toString()) + "\",");
+        out.println("  \"originalSize\": " + originalSize + ",");
+        out.println("  \"bestMode\": \"" + escapeJson(best.benchmarkCase().label()) + "\",");
+        out.printf("  \"bestReductionPercent\": %.4f,%n", bestSavedPct);
+        out.println("  \"bestTimeSeconds\": " + bestSeconds + ",");
+        out.println("  \"results\": [");
+        for (int i = 0; i < CASES.size(); i++) {
+            BenchmarkCase benchmarkCase = CASES.get(i);
+            BenchmarkResult result = byLabel.get(benchmarkCase.label());
+            if (result == null) {
+                continue;
             }
-            return modeLabel + ", " + resources + advancedLabel;
+            long saved = originalSize - result.sizeBytes();
+            double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
+            double seconds = result.elapsedMs() / 1000.0;
+            out.println("    {");
+            out.println("      \"mode\": \"" + escapeJson(result.benchmarkCase().label()) + "\",");
+            out.println("      \"sizeBytes\": " + result.sizeBytes() + ",");
+            out.printf("      \"savedPercent\": %.4f,%n", savedPct);
+            out.printf("      \"elapsedSeconds\": %.4f,%n", seconds);
+            out.println("      \"elapsedMs\": " + result.elapsedMs());
+            out.print("    }");
+            out.println(i == CASES.size() - 1 ? "" : ",");
+        }
+        out.println("  ]");
+        out.println("}");
+    }
+
+    private static String escapeJson(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private record BenchmarkCase(CompressionMode mode, boolean proguard) {
+        private String label() {
+            if (proguard && mode == null) {
+                return "proguard";
+            }
+            if (proguard) {
+                return "proguard " + mode.cliValue();
+            }
+            return mode.cliValue();
         }
     }
 

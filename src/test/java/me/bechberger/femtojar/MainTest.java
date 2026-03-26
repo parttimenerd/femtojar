@@ -121,10 +121,11 @@ class MainTest {
         String output = result.out();
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
         assertTrue(output.contains("Result table"), () -> output);
-        assertTrue(output.contains("default, resources=off"));
-        assertTrue(output.contains("zopfli, resources=on"));
-        assertTrue(output.contains("max, resources=off"));
-        assertTrue(output.contains("Best setting:"));
+        assertTrue(output.contains("default"));
+        assertTrue(output.contains("zopfli"));
+        assertTrue(output.contains("max"));
+        assertTrue(output.contains("proguard default"));
+        assertTrue(output.contains("Best reduction:"));
 
         byte[] currentBytes = Files.readAllBytes(inputJar);
         assertNotEquals(0, currentBytes.length);
@@ -144,8 +145,25 @@ class MainTest {
         String output = result.out();
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
         assertTrue(output.contains("## femtojar benchmark"), () -> output);
-        assertTrue(output.contains("| mode | size(bytes) | saved(bytes) | saved(%) | time(ms) | size vs default(%) | time vs default(%) |"));
-        assertTrue(output.contains("| default, resources=off |"));
+        assertTrue(output.contains("| mode | size(bytes) | saved(%) | time(s) |"));
+        assertTrue(output.contains("| default |"));
+    }
+
+    @Test
+    void benchmarkCanEmitJson() throws Exception {
+        Path tempDir = Files.createTempDirectory("femtojar-cli-benchmark-json-test");
+        Path inputJar = tempDir.resolve("input.jar");
+        createSampleJarWithResource(inputJar);
+
+        RunResult result = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), "--benchmark", "--benchmark-format", "json"});
+
+        String output = result.out();
+        assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
+        assertTrue(output.contains("\"input\""), () -> output);
+        assertTrue(output.contains("\"results\""), () -> output);
+        assertTrue(output.contains("\"mode\": \"default\""), () -> output);
     }
 
     @Test
@@ -173,6 +191,88 @@ class MainTest {
         assertEquals(0, runExit, () -> "Process failed. Output:\n" + output);
         assertTrue(output.contains("CLI_EXEC_OK"), () -> output);
         assertTrue(output.contains("ARG_COUNT=2"), () -> output);
+    }
+
+    @Test
+    void proguardPassThroughAndReencode() throws Exception {
+        Path tempDir = Files.createTempDirectory("femtojar-cli-proguard-test");
+        Path inputJar = tempDir.resolve("input.jar");
+        Path outputJar = tempDir.resolve("output.jar");
+        createSampleJar(inputJar);
+
+        // Write a ProGuard config that keeps everything and doesn't obfuscate
+        Path pgConfig = tempDir.resolve("pg.pro");
+        Files.writeString(pgConfig, String.join("\n",
+                "-keep class ** { *; }",
+                "-dontobfuscate",
+                "-dontoptimize"
+        ));
+
+        RunResult result = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), outputJar.toString(),
+                        "--proguard", "--proguard-config", pgConfig.toString(), "--deflate"});
+
+        assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
+        assertTrue(Files.exists(outputJar));
+        assertTrue(result.out().contains("Re-encoded"), () -> result.out());
+
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            assertNotNull(jar.getEntry("__classes.zlib"));
+        }
+    }
+
+    @Test
+    void proguardWithSeparateOutFile() throws Exception {
+        Path tempDir = Files.createTempDirectory("femtojar-cli-proguard-out-test");
+        Path inputJar = tempDir.resolve("input.jar");
+        Path pgOut = tempDir.resolve("proguarded.jar");
+        Path outputJar = tempDir.resolve("output.jar");
+        createSampleJar(inputJar);
+
+        Path pgConfig = tempDir.resolve("pg.pro");
+        Files.writeString(pgConfig, String.join("\n",
+                "-keep class ** { *; }",
+                "-dontobfuscate",
+                "-dontoptimize"
+        ));
+
+        RunResult result = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), outputJar.toString(),
+                        "--proguard", "--proguard-config", pgConfig.toString(),
+                        "--proguard-out", pgOut.toString(), "--deflate"});
+
+        assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
+        assertTrue(Files.exists(pgOut), "ProGuard output JAR should exist");
+        assertTrue(Files.exists(outputJar), "Final output JAR should exist");
+    }
+
+    @Test
+    void proguardNoDefaultConfigDisablesBundled() throws Exception {
+        Path tempDir = Files.createTempDirectory("femtojar-cli-proguard-nodefault-test");
+        Path inputJar = tempDir.resolve("input.jar");
+        Path outputJar = tempDir.resolve("output.jar");
+        createSampleJar(inputJar);
+
+        // Without the bundled default config, supply library & keep rules via a user config file.
+        Path pgConfig = tempDir.resolve("pg.pro");
+        Files.writeString(pgConfig, String.join("\n",
+                "-libraryjars <java.home>/jmods/java.base.jmod(!**.jar;!module-info.class)",
+                "-keep class ** { *; }",
+                "-dontobfuscate",
+                "-dontoptimize"
+        ));
+
+        RunResult result = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), outputJar.toString(),
+                        "--proguard", "--no-proguard-default-config",
+                        "--proguard-config", pgConfig.toString(),
+                        "--deflate"});
+
+        assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
+        assertTrue(Files.exists(outputJar));
     }
 
     private static void createSampleJar(Path jarPath) throws Exception {

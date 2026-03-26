@@ -11,8 +11,8 @@ _It's still an early proof-of-concept, but initial results show promising size r
 - Single-blob class compression for better cross-class redundancy
 - Zopfli compression mode (default) with configurable iterations
 - Deflate fallback mode for faster builds
-- Optional advanced class ordering (package-aware, hill-climb) for better compression
 - Optional bundling of non-`META-INF/*` resources
+- Optional [ProGuard](https://www.guardsquare.com/proguard) shrinking/optimization before reencoding
 - Maven plugin goal and standalone CLI
 - Integration-test profile (`run-its`) with Maven Invoker fixtures
 
@@ -96,6 +96,43 @@ Important:
 </plugin>
 ```
 
+### ProGuard Configuration
+
+femtojar can optionally run ProGuard before reencoding to shrink/optimize the JAR. This typically yields an additional ~30% size reduction on top of femtojar's normal compression. ProGuard runs in-process via the `proguard.ProGuard` API. All ProGuard settings are grouped under a `<proguard>` element, available both globally and per-JAR.
+
+A bundled default config (`proguard-default.pro`) ships with femtojar and is prepended automatically unless disabled. It includes `java.base` as a library JAR and standard keep rules for main classes, native methods, enums, serialization, and annotations.
+
+**Caveats:**
+
+- ProGuard modifies bytecode — the resulting JAR should be thoroughly tested before shipping.
+- Reflection-heavy code (e.g. CLI frameworks like picocli, serialization libraries) typically requires additional `-keep` rules to work correctly.
+- ProGuard may be sensitive to the target Java version; verify with the JDK you deploy on.
+- No aggressive optimizations are applied by the default config, but ProGuard is still an invasive transform compared to plain reencoding.
+
+```xml
+<configuration>
+  <proguard>
+    <enabled>true</enabled>
+    <prependDefaultConfig>true</prependDefaultConfig>
+    <configFile>${basedir}/proguard.conf</configFile>
+    <options>
+      <option>-dontobfuscate</option>
+    </options>
+  </proguard>
+  <jars>
+    <jar>
+      <in>${project.build.finalName}.jar</in>
+      <!-- per-JAR ProGuard overrides -->
+      <proguard>
+        <options>
+          <option>-keep class com.example.api.** { *; }</option>
+        </options>
+      </proguard>
+    </jar>
+  </jars>
+</configuration>
+```
+
 ### Plugin Parameters
 
 | Parameter | Description | Default |
@@ -105,11 +142,26 @@ Important:
 | `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
 | `compressionMode` | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
 | `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `false` |
-| `advancedMode` | Class ordering strategy: empty (lexical), `package`, or `hill-climb`. | Not set (lexical) |
-| `advancedIterations` | Iterations for hill-climb modes. Ignored for package mode. | `-1` |
-| `parallel` | Evaluate random swap candidates in parallel in hill-climb modes. | `false` |
 | `failOnError` | Fail build immediately on rewrite errors. | `true` |
 | `skip` | Skip plugin execution. | `false` |
+| `proguard.enabled` | Run ProGuard before reencoding. | `false` |
+| `proguard.prependDefaultConfig` | Prepend the bundled default ProGuard config. | `true` |
+| `proguard.configFile` | Path to a user ProGuard `.pro` config file. | Not set |
+| `proguard.options` | Inline ProGuard options (e.g. `-dontobfuscate`). | Not set |
+| `proguard.out` | Separate ProGuard output path. If omitted, a temp file is used. | Not set |
+| `proguard.libraryJars` | Additional `-libraryjars` paths for ProGuard. | Not set |
+
+All `proguard.*` parameters can also be specified per-JAR inside `<jar><proguard>...</proguard></jar>`. Per-JAR values override the global setting; null fields fall back to the global config.
+
+### Per-JAR Overrides
+
+In addition to ProGuard, the following settings can be overridden per-JAR:
+
+| Per-JAR Parameter | Description |
+| --- | --- |
+| `jars[i].compressionMode` | Override global `compressionMode` for this JAR. |
+| `jars[i].bundleResources` | Override global `bundleResources`. |
+| `jars[i].proguard` | Override global ProGuard config (same sub-elements). |
 
 ## CLI
 
@@ -124,65 +176,45 @@ mvn package
 Run it:
 
 ```bash
-java -jar target/femtojar-0.1.0-cli.jar --in app.jar --out app-optimized.jar
+java -jar target/femtojar-0.1.0-cli.jar app.jar app-optimized.jar
 ```
 
-Positional form:
+With ProGuard:
 
 ```bash
-java -jar target/femtojar-0.1.0-cli.jar app.jar app-optimized.jar --compression default
+java -jar target/femtojar-0.1.0-cli.jar app.jar app-optimized.jar --proguard --proguard-config proguard.conf
 ```
 
 Benchmark form:
 
 ```bash
-java -jar target/femtojar-0.1.0-cli.jar --benchmark --in app.jar
+java -jar target/femtojar-0.1.0-cli.jar app.jar --benchmark --benchmark-format markdown
+```
+
+Benchmark with custom ProGuard rules used for all `proguard*` benchmark rows:
+
+```bash
+java -jar target/femtojar-0.1.0-cli.jar app.jar --benchmark --benchmark-format json \
+  --proguard-config proguard.conf \
+  --proguard-options "-dontwarn"
 ```
 
 CLI options:
 
-- `--in <path>`: input JAR path
-- `--out <path>`: output JAR path (optional, defaults to in-place rewrite)
+- First positional arg: input JAR path
+- Second positional arg (optional): output JAR path (defaults to in-place rewrite)
 - `--compression <default|zopfli|max>`: compression preset (`default`=deflate, `zopfli`=7 iterations, `max`=100 iterations)
 - `--bundle-resources`: enable resource bundling
 - `--no-bundle-resources`: disable resource bundling
-- `--advanced-mode <package|hill-climb>`: class ordering strategy (`package` = group by package+size, `hill-climb` = proxy-guided swap perturbations)
-- `--advanced-iterations <N>`: iterations for hill-climb modes
-- `--parallel`: evaluate swap candidates in parallel in hill-climb modes
-- `--rverbose` (or `--verbose`): print ordering iteration logs (size per trial)
-- `--benchmark`: run a non-destructive benchmark matrix in parallel and print size/time comparisons, including best relative improvement vs default
-- `--benchmark-format <text|markdown>`: optional benchmark output format (default: `text`)
+- `--proguard`: run ProGuard before reencoding
+- `--proguard-config <path>`: path to a ProGuard `.pro` config file
+- `--proguard-options <option>`: inline ProGuard option (repeatable)
+- `--proguard-out <path>`: write ProGuard output to a separate path instead of a temp file
+- `--no-proguard-default-config`: do not prepend the bundled default ProGuard config
+- `--rverbose` (or `--verbose`): print verbose processing output
+- `--benchmark`: run a non-destructive benchmark matrix and print size/time comparisons
+- `--benchmark-format <text|markdown|json>`: optional benchmark output format (default: `text`)
 - `-h`, `--help`: show usage
-
-## Advanced Class Ordering
-
-femtojar can optionally reorder class files before creating the compressed blob.
-
-Why this exists:
-
-- Deflate/Zopfli use a fixed 32KB sliding window.
-- In one large bundled stream, class order affects which repeated byte patterns are still inside that window.
-- A smarter order can produce slightly smaller output, especially for large shaded JARs.
-
-Two modes are available:
-
-### Package mode (`--advanced-mode package`)
-
-Groups classes by package, then sorts by file size within each package.
-Classes in the same package share constant-pool strings (package name, common imports),
-so placing them adjacent keeps repeated patterns inside the deflate window.
-Deterministic and fast — no compression measurement needed.
-
-### Hill-climb mode (`--advanced-mode hill-climb --advanced-iterations N`)
-
-Starts from package-aware ordering and makes N random swap perturbations.
-Uses fast deflate (level 1) as a proxy to measure each candidate — so each
-iteration is very cheap (~100x faster than real Zopfli).
-Keeps a swap only if the proxy size improves.
-Best balance of quality and speed.
-
-Optional: add `--parallel` to evaluate multiple random swap candidates per
-iteration and keep the best one.
 
 ## Build and Test
 
@@ -216,7 +248,7 @@ Dry run:
 Patch release without deploy:
 
 ```bash
-./release.py --patch --no-deploy
+./release.py --patch
 ```
 
 Default release flow:
@@ -243,38 +275,3 @@ Contribution and feedback are encouraged and always welcome.
 ## License
 
 MIT, Copyright 2026 SAP SE or an SAP affiliate company, Johannes Bechberger and contributors
-
-464 -rw-r--r--   1 i560383  staff   231K Mar 25 10:02 demo-app-1.0-SNAPSHOT-small.jar
-16 -rw-r--r--   1 i560383  staff   4.2K Mar 25 10:06 demo-app-1.0-SNAPSHOT.jar
-600 -rw-r--r--   1 i560383  staff   299K Mar 25 10:06 demo-app-optimized.jar
-464 -rw-r--r--   1 i560383  staff   231K Mar 25 10:06 demo-app-small.jar
-816 -rw-r--r--   1 i560383  staff   408K Mar 25 10:06 demo-app.jar
-
-
-464 -rw-r--r--   1 i560383  staff   231K Mar 25 10:02 demo-app-1.0-SNAPSHOT-small.jar
-16 -rw-r--r--   1 i560383  staff   4.2K Mar 25 10:07 demo-app-1.0-SNAPSHOT.jar
-600 -rw-r--r--   1 i560383  staff   299K Mar 25 10:07 demo-app-optimized.jar
-600 -rw-r--r--   1 i560383  staff   297K Mar 25 10:07 demo-app-small.jar
-816 -rw-r--r--   1 i560383  staff   408K Mar 25 10:07 demo-app.jar
-
-
-Idea:
-
-current: demo-app.jar
-408K Mar 25 10:16 demo-app.jar
-
-just recompression:
-299K Mar 25 10:07 demo-app-optimized.jar
-
-just proguard in application mode:
-231K Mar 25 10:16 demo-app-small.jar
-
-combined:
-171K Mar 25 10:16 demo-app-optimized.jar
-
-So possibly add another mode: proguard-application
-Caveats: Modifies the bytecode and is possibly Java version dependent
-But proguard is a commonly used tool and no aggressive optimizations are applied.
-The biggest caveat is that it requires customisation of the proguard rules
-to work, especially for reflection have (i.e. CLI library) code.
-Implementing doesn't hurt, but the resulting JAR should be properly tested.

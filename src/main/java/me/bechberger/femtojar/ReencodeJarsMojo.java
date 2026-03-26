@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.List;
 
 @Mojo(name = "reencode-jars", threadSafe = true)
@@ -32,25 +33,11 @@ public class ReencodeJarsMojo extends AbstractMojo {
     private boolean bundleResources;
 
     /**
-     * Advanced class ordering mode.
-        * Null/empty = lexical (default). 'package' = package-aware grouping.
-        * 'hill-climb' = swap perturbations starting from package ordering using fast proxy measurement.
+     * Global ProGuard configuration. All settings inside this element apply
+     * to every JAR unless overridden per-JAR.
      */
-    @Parameter(property = "femtojar.advancedMode")
-    private String advancedMode;
-
-    /**
-        * Number of iterations for hill-climb modes.
-     * Ignored for 'package' mode.
-     */
-    @Parameter(property = "femtojar.advancedIterations", defaultValue = "-1")
-    private int advancedIterations;
-
-        /**
-        * Evaluate random swap candidates in parallel in hill-climb modes.
-        */
-        @Parameter(property = "femtojar.parallel", defaultValue = "false")
-        private boolean parallel;
+    @Parameter
+    private ProGuardConfig proguard;
 
     /**
      * List of JAR entries to reencode. Each entry has an input path {@code <in>}
@@ -67,6 +54,8 @@ public class ReencodeJarsMojo extends AbstractMojo {
 
     /**
      * Configuration for a single JAR reencode operation.
+     * All settings except {@code in}/{@code out} are optional and fall back to
+     * the corresponding plugin-level value when omitted.
      */
     public static class JarEntry {
         /**
@@ -79,21 +68,38 @@ public class ReencodeJarsMojo extends AbstractMojo {
          */
         private String out;
 
-        public String getIn() {
-            return in;
-        }
+        /**
+         * Per-JAR compression mode override (DEFAULT | ZOPFLI | MAX).
+         * Inherits the plugin-level {@code compressionMode} when null.
+         */
+        private CompressionMode compressionMode;
 
-        public void setIn(String in) {
-            this.in = in;
-        }
+        /**
+         * Per-JAR resource-bundling override.
+         * Inherits the plugin-level {@code bundleResources} when null.
+         */
+        private Boolean bundleResources;
 
-        public String getOut() {
-            return out;
-        }
+        /**
+         * Per-JAR ProGuard configuration override.
+         * Inherits the plugin-level {@code proguard} settings when null.
+         */
+        private ProGuardConfig proguard;
 
-        public void setOut(String out) {
-            this.out = out;
-        }
+        public String getIn() { return in; }
+        public void setIn(String in) { this.in = in; }
+
+        public String getOut() { return out; }
+        public void setOut(String out) { this.out = out; }
+
+        public CompressionMode getCompressionMode() { return compressionMode; }
+        public void setCompressionMode(CompressionMode compressionMode) { this.compressionMode = compressionMode; }
+
+        public Boolean getBundleResources() { return bundleResources; }
+        public void setBundleResources(Boolean bundleResources) { this.bundleResources = bundleResources; }
+
+        public ProGuardConfig getProguard() { return proguard; }
+        public void setProguard(ProGuardConfig proguard) { this.proguard = proguard; }
     }
 
     @Override
@@ -106,54 +112,90 @@ public class ReencodeJarsMojo extends AbstractMojo {
             throw new MojoExecutionException("Parameter 'jars' must contain at least one JAR entry");
         }
         String femtojarVersion = getFemtojarVersion();
-        AdvancedOrderingMode parsedMode = parseAdvancedMode();
         for (JarEntry entry : jars) {
             if (entry.getIn() == null || entry.getIn().isBlank()) {
                 throw new MojoExecutionException("Each JAR entry must have an 'in' path");
             }
+
+            // Resolve effective per-JAR settings, falling back to plugin-level defaults.
+            CompressionMode effectiveCompression = entry.getCompressionMode() != null
+                    ? entry.getCompressionMode() : compressionMode;
+            boolean effectiveBundleResources = entry.getBundleResources() != null
+                    ? entry.getBundleResources() : bundleResources;
+
+            // Resolve effective ProGuard config (per-JAR merged with global).
+            ProGuardConfig effectiveProguard = resolveProGuardConfig(entry);
+
             Path sourceJarPath = resolveJarPath(entry.getIn());
             Path targetJarPath = entry.getOut() == null || entry.getOut().isBlank()
                     ? sourceJarPath
                     : resolveJarPath(entry.getOut());
+
+            // Run ProGuard before reencoding if enabled.
+            Path reencoderInput = sourceJarPath;
+            Path proguardTempFile = null;
+            if (effectiveProguard != null && effectiveProguard.isEnabled()) {
+                try {
+                    Path pgOut;
+                    if (effectiveProguard.getOut() != null && !effectiveProguard.getOut().isBlank()) {
+                        pgOut = resolveJarPath(effectiveProguard.getOut());
+                    } else {
+                        proguardTempFile = Files.createTempDirectory("proguard-work-")
+                                .resolve("proguard-out.jar");
+                        pgOut = proguardTempFile;
+                    }
+                    Path pgConfig = effectiveProguard.getConfigFile() != null
+                            ? Path.of(effectiveProguard.getConfigFile()) : null;
+                    List<Path> pgLibs = effectiveProguard.getLibraryJars() != null
+                            ? effectiveProguard.getLibraryJars().stream().map(Path::of).toList()
+                            : Collections.emptyList();
+                    getLog().info("Running ProGuard on " + sourceJarPath + " -> " + pgOut);
+                    ProGuardRunner.run(sourceJarPath, pgOut,
+                            effectiveProguard.isPrependDefaultConfig(),
+                            pgConfig, effectiveProguard.getOptions(), pgLibs);
+                    reencoderInput = pgOut;
+                } catch (IOException e) {
+                    String message = "ProGuard failed for: " + sourceJarPath;
+                    if (failOnError) {
+                        throw new MojoExecutionException(message, e);
+                    }
+                    getLog().warn(message + " - " + e.getMessage());
+                    continue;
+                }
+            }
+
             try {
                 JarReencoder.ReencodeResult result;
-                if (sourceJarPath.equals(targetJarPath)) {
+                if (reencoderInput.equals(targetJarPath)) {
                     result = reencoder.reencodeInPlaceBundled(
-                        sourceJarPath,
-                        compressionMode.useZopfli(),
-                        compressionMode.zopfliIterations(),
-                        bundleResources,
+                        reencoderInput,
+                        effectiveCompression.useZopfli(),
+                        effectiveCompression.zopfliIterations(),
+                        effectiveBundleResources,
                         femtojarVersion,
-                        parsedMode,
-                        advancedIterations,
-                        parallel);
+                        false,
+                        null);
                 } else {
-                    long originalSize = Files.size(sourceJarPath);
+                    long originalSize = Files.size(reencoderInput);
                     reencoder.rewriteJarBundled(
-                        sourceJarPath,
+                        reencoderInput,
                         targetJarPath,
-                        compressionMode.useZopfli(),
-                        compressionMode.zopfliIterations(),
-                        bundleResources,
+                        effectiveCompression.useZopfli(),
+                        effectiveCompression.zopfliIterations(),
+                        effectiveBundleResources,
                         femtojarVersion,
-                        parsedMode,
-                        advancedIterations,
-                        parallel);
+                        false,
+                        null);
                     long newSize = Files.size(targetJarPath);
                     result = new JarReencoder.ReencodeResult(originalSize, newSize);
                 }
                 long saved = result.originalSize() - result.newSize();
                 double ratio = result.originalSize() == 0 ? 0d : (saved * 100.0) / result.originalSize();
-                String compressionModeLabel = switch (compressionMode) {
-                    case DEFAULT -> "default (deflate level=9)";
-                    case ZOPFLI -> "zopfli (iterations=7)";
-                    case MAX -> "max (zopfli iterations=100)";
-                };
-                String bundledMode = bundleResources
+                String bundledMode = effectiveBundleResources
                     ? "bundled classes + non-META-INF resources"
                     : "bundled classes only";
                 getLog().info("Re-encoded " + sourceJarPath + " -> " + targetJarPath + " with " + bundledMode + " + "
-                        + compressionModeLabel + ": " + result.originalSize() + " -> " + result.newSize()
+                        + effectiveCompression.description() + ": " + result.originalSize() + " -> " + result.newSize()
                         + " bytes (saved " + saved + " bytes, " + String.format("%.2f", ratio) + "%)");
             } catch (IOException e) {
                 String message = "Failed to re-encode JAR: " + sourceJarPath + " -> " + targetJarPath;
@@ -161,6 +203,13 @@ public class ReencodeJarsMojo extends AbstractMojo {
                     throw new MojoExecutionException(message, e);
                 }
                 getLog().warn(message + " - " + e.getMessage());
+            } finally {
+                if (proguardTempFile != null) {
+                    try {
+                        Files.deleteIfExists(proguardTempFile);
+                        Files.deleteIfExists(proguardTempFile.getParent());
+                    } catch (IOException ignored) {}
+                }
             }
         }
     }
@@ -170,11 +219,12 @@ public class ReencodeJarsMojo extends AbstractMojo {
         return version == null || version.isBlank() ? "unknown" : version;
     }
 
-    private AdvancedOrderingMode parseAdvancedMode() {
-        if (advancedMode == null || advancedMode.isBlank()) {
-            return null;
+    private ProGuardConfig resolveProGuardConfig(JarEntry entry) {
+        ProGuardConfig perJar = entry.getProguard();
+        if (perJar == null) {
+            return proguard;
         }
-        return AdvancedOrderingMode.parse(advancedMode);
+        return perJar.mergeWith(proguard);
     }
 
     private Path resolveJarPath(String configuredJar) throws MojoExecutionException {
