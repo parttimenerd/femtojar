@@ -45,8 +45,10 @@ Important:
   <version>0.1.0</version>
   <executions>
     <execution>
+      <id>recompress-jar</id>
+      <phase>package</phase>
       <goals>
-        <goal>reencode-jars</goal>
+          <goal>reencode-jars</goal>
       </goals>
     </execution>
   </executions>
@@ -241,3 +243,38 @@ Contribution and feedback are encouraged and always welcome.
 ## License
 
 MIT, Copyright 2026 SAP SE or an SAP affiliate company, Johannes Bechberger and contributors
+
+464 -rw-r--r--   1 i560383  staff   231K Mar 25 10:02 demo-app-1.0-SNAPSHOT-small.jar
+16 -rw-r--r--   1 i560383  staff   4.2K Mar 25 10:06 demo-app-1.0-SNAPSHOT.jar
+600 -rw-r--r--   1 i560383  staff   299K Mar 25 10:06 demo-app-optimized.jar
+464 -rw-r--r--   1 i560383  staff   231K Mar 25 10:06 demo-app-small.jar
+816 -rw-r--r--   1 i560383  staff   408K Mar 25 10:06 demo-app.jar
+
+
+464 -rw-r--r--   1 i560383  staff   231K Mar 25 10:02 demo-app-1.0-SNAPSHOT-small.jar
+16 -rw-r--r--   1 i560383  staff   4.2K Mar 25 10:07 demo-app-1.0-SNAPSHOT.jar
+600 -rw-r--r--   1 i560383  staff   299K Mar 25 10:07 demo-app-optimized.jar
+600 -rw-r--r--   1 i560383  staff   297K Mar 25 10:07 demo-app-small.jar
+816 -rw-r--r--   1 i560383  staff   408K Mar 25 10:07 demo-app.jar
+
+
+Idea:
+
+current: demo-app.jar
+408K Mar 25 10:16 demo-app.jar
+
+just recompression:
+299K Mar 25 10:07 demo-app-optimized.jar
+
+just proguard in application mode:
+231K Mar 25 10:16 demo-app-small.jar
+
+combined:
+171K Mar 25 10:16 demo-app-optimized.jar
+
+So possibly add another mode: proguard-application
+Caveats: Modifies the bytecode and is possibly Java version dependent
+But proguard is a commonly used tool and no aggressive optimizations are applied.
+The biggest caveat is that it requires customisation of the proguard rules
+to work, especially for reflection have (i.e. CLI library) code.
+Implementing doesn't hurt, but the resulting JAR should be properly tested.
