@@ -202,29 +202,44 @@ jobs:
           fi
 
           java -jar "${CLI_JAR}" example-project/target/demo-app.jar --benchmark --benchmark-format json \
-            --proguard-config example-project/proguard.conf > demo-app.json
+            --proguard-config example-project/proguard.conf > demo-app.json &
+          PID_DEMO=$!
 
           java -jar "${CLI_JAR}" jstall-full.jar --benchmark --benchmark-format json \
             --proguard-options "-keep class me.bechberger.jstall.cli.**" \
             --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**" \
-            --proguard-options "-dontwarn" > jstall.json
+            --proguard-options "-dontwarn" > jstall.json &
+          PID_JSTALL=$!
 
           java -jar "${CLI_JAR}" jstall-minimal.jar --benchmark --benchmark-format json \
             --proguard-options "-keep class me.bechberger.jstall.cli.**" \
             --proguard-options "-keepclassmembers class me.bechberger.jstall.cli.**" \
-            --proguard-options "-dontwarn" > jstall-minimal.json
+            --proguard-options "-dontwarn" > jstall-minimal.json &
+          PID_JSTALL_MIN=$!
 
           java -jar "${CLI_JAR}" condensed-data.jar --benchmark --benchmark-format json \
             --proguard-options "-dontwarn" \
-            --proguard-options "-keep *.cli.*" > condensed-data.json
+            --proguard-options "-keep class **.cli.** { *; }" > condensed-data.json &
+          PID_CD=$!
 
           java -jar "${CLI_JAR}" condensed-data-linux-amd64.jar --benchmark --benchmark-format json \
             --proguard-options "-dontwarn" \
-            --proguard-options "-keep *.cli.*" > condensed-data-linux-amd64.json
+            --proguard-options "-keep class **.cli.** { *; }" > condensed-data-linux-amd64.json &
+          PID_CD_AMD64=$!
 
           java -jar "${CLI_JAR}" condensed-data-linux-amd64-inflaterless.jar --benchmark --benchmark-format json \
             --proguard-options "-dontwarn" \
-            --proguard-options "-keep *.cli.*" > condensed-data-linux-amd64-inflaterless.json
+            --proguard-options "-keep class **.cli.** { *; }" > condensed-data-linux-amd64-inflaterless.json &
+          PID_CD_INFLATERLESS=$!
+
+          echo "Waiting for all benchmarks to complete..."
+          FAIL=0
+          for PID in $PID_DEMO $PID_JSTALL $PID_JSTALL_MIN $PID_CD $PID_CD_AMD64 $PID_CD_INFLATERLESS; do
+            wait "$PID" || FAIL=1
+          done
+          if [ "$FAIL" -ne 0 ]; then
+            echo "::warning::One or more benchmark processes exited with non-zero status"
+          fi
 
           python3 <<'ENDPYTHON' > benchmark-summary.md
           import json

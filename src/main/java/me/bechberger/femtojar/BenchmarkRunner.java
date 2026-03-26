@@ -188,22 +188,14 @@ public class BenchmarkRunner {
     private void render(Format format, Path inputJar, long originalSize, List<BenchmarkResult> results) {
         Map<String, BenchmarkResult> byLabel = results.stream().collect(
                 java.util.stream.Collectors.toMap(r -> r.benchmarkCase().label(), r -> r));
-        BenchmarkResult defaultConfig = byLabel.get("default");
-        if (defaultConfig == null) {
-            throw new IllegalStateException("Benchmark results missing default baseline");
-        }
 
         BenchmarkResult best = results.stream()
                 .filter(r -> !r.failed())
                 .min(Comparator.comparingLong(BenchmarkResult::sizeBytes))
                 .orElse(null);
-        if (best == null) {
-            err.println("All benchmark cases failed");
-            return;
-        }
-        long bestSavedBytes = originalSize - best.sizeBytes();
-        double bestSavedPct = originalSize == 0 ? 0d : (bestSavedBytes * 100.0) / originalSize;
-        long bestSeconds = Math.max(0L, Math.round(best.elapsedMs() / 1000.0));
+        long bestSavedBytes = best != null ? originalSize - best.sizeBytes() : 0;
+        double bestSavedPct = best != null && originalSize != 0 ? (bestSavedBytes * 100.0) / originalSize : 0d;
+        long bestSeconds = best != null ? Math.max(0L, Math.round(best.elapsedMs() / 1000.0)) : 0;
 
         if (format == Format.JSON) {
             renderJson(inputJar, originalSize, best, bestSavedPct, bestSeconds, byLabel);
@@ -215,7 +207,11 @@ public class BenchmarkRunner {
             out.println();
             out.println("- input: `" + inputJar + "`");
             out.println("- original size: `" + originalSize + "` bytes");
-            out.printf("- best-reduction: `%s` (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
+            if (best != null) {
+                out.printf("- best-reduction: `%s` (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
+            } else {
+                out.println("- best-reduction: none (all cases failed)");
+            }
             out.println();
             out.println("| mode | size(bytes) | saved(%) | time(s) |");
             out.println("| --- | ---: | ---: | ---: |");
@@ -262,8 +258,15 @@ public class BenchmarkRunner {
                     seconds);
         }
         out.println();
-        out.printf("Best reduction: %s (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
-        out.printf("Default baseline: %d bytes%n", defaultConfig.sizeBytes());
+        if (best != null) {
+            out.printf("Best reduction: %s (%.2f%%) in %ds%n", best.benchmarkCase().label(), bestSavedPct, bestSeconds);
+        } else {
+            out.println("Best reduction: none (all cases failed)");
+        }
+        BenchmarkResult defaultConfig = byLabel.get("default");
+        if (defaultConfig != null && !defaultConfig.failed()) {
+            out.printf("Default baseline: %d bytes%n", defaultConfig.sizeBytes());
+        }
     }
 
     private void renderJson(Path inputJar,
@@ -275,7 +278,7 @@ public class BenchmarkRunner {
         out.println("{");
         out.println("  \"input\": \"" + escapeJson(inputJar.toString()) + "\",");
         out.println("  \"originalSize\": " + originalSize + ",");
-        out.println("  \"bestMode\": \"" + escapeJson(best.benchmarkCase().label()) + "\",");
+        out.println("  \"bestMode\": \"" + (best != null ? escapeJson(best.benchmarkCase().label()) : "none") + "\",");
         out.printf("  \"bestReductionPercent\": %.4f,%n", bestSavedPct);
         out.println("  \"bestTimeSeconds\": " + bestSeconds + ",");
         out.println("  \"results\": [");
