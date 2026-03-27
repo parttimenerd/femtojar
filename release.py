@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date
+import json
 import re
 import subprocess
 import sys
@@ -34,11 +35,13 @@ class ReleaseManager:
         self.readme = project_root / "README.md"
         self.example_pom = project_root / "example-project" / "pom.xml"
         self.changelog = project_root / "CHANGELOG.md"
+        self.jbang_catalog = project_root / "jbang-catalog.json"
         self._release_files = [
             self.pom_xml,
             self.readme,
             self.example_pom,
             self.changelog,
+            self.jbang_catalog,
         ]
 
     def get_current_version(self) -> str:
@@ -94,6 +97,23 @@ class ReleaseManager:
         )
         updated = re.sub(pattern, r"\g<1>" + new + r"\g<2>", content, flags=re.DOTALL)
         self.example_pom.write_text(updated, encoding="utf-8")
+
+    def update_jbang_catalog(self, new_version: str) -> None:
+        if not self.jbang_catalog.exists():
+            return
+
+        content = self.jbang_catalog.read_text(encoding="utf-8")
+        data = json.loads(content)
+
+        try:
+            data["aliases"]["femtojar"]["script-ref"] = (
+                f"https://github.com/parttimenerd/femtojar/releases/download/v{new_version}/"
+                f"femtojar-{new_version}.jar"
+            )
+        except (KeyError, TypeError):
+            raise ValueError("jbang-catalog.json has unexpected structure")
+
+        self.jbang_catalog.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def update_changelog_for_release(self, new_version: str) -> None:
         if not self.changelog.exists():
@@ -228,6 +248,7 @@ class ReleaseManager:
             "README.md",
             "example-project/pom.xml",
             "CHANGELOG.md",
+            "jbang-catalog.json",
         ]
         self.run_command(["git", "add", *files], "Staging release files")
         self.run_command(["git", "commit", "-m", f"Release {version}"], "Creating release commit")
@@ -389,6 +410,7 @@ def main() -> None:
         print("- pom.xml")
         print("- README.md")
         print("- example-project/pom.xml")
+        print("- jbang-catalog.json")
         print(manager.preview_changelog_release(new))
         return
 
@@ -398,6 +420,7 @@ def main() -> None:
         manager.update_pom_version(current, new)
         manager.update_readme_versions(current, new)
         manager.update_example_plugin_version(current, new)
+        manager.update_jbang_catalog(new)
 
         manager.run_checks(include_its=not args.no_its)
         manager.deploy()
