@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Add proguard support
+- Add [ProGuard](https://www.guardsquare.com/proguard) support
 
 ### Added
 
