@@ -342,12 +342,12 @@ jobs:
               size_mb = size / (1024 * 1024)
               bm = doc["bestMode"]
               if bm == "none":
-                  best_str = f"{size_mb:.3f} MB, best: all failed"
+                best_str = f"{size_mb:.3f} MB, best-size: all failed"
               else:
                   pct = doc["bestReductionPercent"]
                   reduced_mb = (size * pct / 100.0) / (1024 * 1024)
                   t = doc["bestTimeSeconds"]
-                  best_str = f"{size_mb:.3f} MB, best: {bm} ({pct:.1f}%, reduced {reduced_mb:.3f} MB) in {t}s"
+                best_str = f"{size_mb:.3f} MB, best-size: {bm} ({pct:.1f}%, reduced {reduced_mb:.3f} MB), mode-time {t}s"
               print(f"- **{label}**: {best_str}")
           print()
 
@@ -358,28 +358,35 @@ jobs:
           print("### Reduction (%)\n")
           print(header)
           print(sep)
-          for mode in mode_order:
+          mode_order_with_none = ["none"] + mode_order
+          for mode in mode_order_with_none:
               vals = []
               for label, _ in columns:
-                  row = data[label]["rows"].get(mode)
-                  if row is None or row.get("failed"):
-                      vals.append("--")
+                  if mode == "none":
+                      vals.append("0.0")
                   else:
-                      vals.append(f"{row['savedPercent']:.1f}")
+                      row = data[label]["rows"].get(mode)
+                      if row is None or row.get("failed"):
+                          vals.append("--")
+                      else:
+                          vals.append(f"{row['savedPercent']:.1f}")
               print("| " + mode + " | " + " | ".join(vals) + " |")
 
           print()
           print("### Reduced Size (MB)\n")
           print(header)
           print(sep)
-          for mode in mode_order:
+          for mode in mode_order_with_none:
               vals = []
               for label, _ in columns:
-                  row = data[label]["rows"].get(mode)
-                  if row is None or row.get("failed"):
-                      vals.append("--")
+                  if mode == "none":
+                      vals.append(f"{data[label]['doc']['originalSize'] / (1024 * 1024):.3f}")
                   else:
-                      vals.append(f"{row['sizeBytes'] / (1024 * 1024):.3f}")
+                      row = data[label]["rows"].get(mode)
+                      if row is None or row.get("failed"):
+                          vals.append("--")
+                      else:
+                          vals.append(f"{row['sizeBytes'] / (1024 * 1024):.3f}")
               print("| " + mode + " | " + " | ".join(vals) + " |")
 
           print()
