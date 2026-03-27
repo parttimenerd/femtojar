@@ -29,7 +29,7 @@ public class ReencodeJarsMojo extends AbstractMojo {
      * Caveat: only getResourceAsStream() is guaranteed for bundled resources;
      * frameworks requiring resource URLs via getResource() may not work.
      */
-    @Parameter(property = "femtojar.bundleResources", defaultValue = "false")
+    @Parameter(property = "femtojar.bundleResources", defaultValue = "true")
     private boolean bundleResources;
 
     /**

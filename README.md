@@ -2,27 +2,25 @@
 
 [![CI](https://github.com/parttimenerd/femtojar/actions/workflows/ci.yml/badge.svg)](https://github.com/parttimenerd/femtojar/actions/workflows/ci.yml)
 
-femtojar shrinks executable JARs by bundling `.class` files into a single compressed blob and loading them through a tiny bootstrap classloader at runtime.
+femtojar shrinks executable JARs by bundling `.class` files and resources into a single compressed blob and loading them through a tiny bootstrap classloader at runtime.
+If you want, it runs [ProGuard](https://www.guardsquare.com/proguard) before hand to further optimize/shrink the JAR.
 
-_It's still an early proof-of-concept, but initial results show promising size reductions of 20-30% on typical shaded/uber JARs._
+**It's for executable JARs, like [jstall](https://github.com/parttimenerd/jstall), not libraries.**
+
+_Femtojar is still an early proof-of-concept, but initial results show promising size reductions of 15-30% for tested shaded/uber JARs, going up to 60% in some cases with ProGuard._
 
 ## Features
 
 - Single-blob class compression for better cross-class redundancy
-- Zopfli compression mode (default) with configurable iterations
-- Deflate fallback mode for faster builds
-- Optional bundling of non-`META-INF/*` resources
+- Zopfli compression mode to squeeze out extra bytes at the cost of longer build times
+- Bundling of non-`META-INF/*` resources into the blob for better compression (with some caveats)
 - Optional [ProGuard](https://www.guardsquare.com/proguard) shrinking/optimization before reencoding
-- Maven plugin goal and standalone CLI
-- Integration-test profile (`run-its`) with Maven Invoker fixtures
+- Maven plugin and standalone CLI
 
-Zopfli is great, because it essentially generates more effizient deflate/gz streams:
+### Comparison with Other Tools
 
-> The output of Zopfli is typically 3–8% smaller than zlib's maximum compression, but takes around 80 times longer
-
-[Wikipedia](https://en.wikipedia.org/wiki/Zopfli)
-
-More info: https://blog.codinghorror.com/zopfli-optimization-literally-free-bandwidth/
+I only found [JarTighten](https://github.com/NeRdTheNed/JarTighten) in my research, which only optimizes the
+ZIP file entries. Feel free to point out other tools.
 
 ## Maven Plugin
 
@@ -96,6 +94,30 @@ Important:
 </plugin>
 ```
 
+### Example Project
+
+See [example-project/pom.xml](example-project/pom.xml) for a complete usage example that shades dependencies, then re-encodes the output JAR.
+
+### Plugin Parameters
+
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `jars` | List of JAR entries to reencode. Each entry has an `<in>` path and optional `<out>` path. | Required |
+| `jars[i].in` | Input JAR path (relative to `${project.build.directory}` if not absolute) | Required per entry |
+| `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
+| `compressionMode` | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
+| `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `true` |
+| `failOnError` | Fail build immediately on rewrite errors. | `true` |
+| `skip` | Skip plugin execution. | `false` |
+| `proguard.enabled` | Run ProGuard before reencoding. | `false` |
+| `proguard.prependDefaultConfig` | Prepend the bundled default ProGuard config. | `true` |
+| `proguard.configFile` | Path to a user ProGuard `.pro` config file. | Not set |
+| `proguard.options` | Inline ProGuard options (e.g. `-dontobfuscate`). | Not set |
+| `proguard.out` | Separate ProGuard output path. If omitted, a temp file is used. | Not set |
+| `proguard.libraryJars` | Additional `-libraryjars` paths for ProGuard. | Not set |
+
+All `proguard.*` parameters can also be specified per-JAR inside `<jar><proguard>...</proguard></jar>`. Per-JAR values override the global setting; null fields fall back to the global config.
+
 ### ProGuard Configuration
 
 femtojar can optionally run ProGuard before reencoding to shrink/optimize the JAR. This typically yields an additional ~30% size reduction on top of femtojar's normal compression. ProGuard runs in-process via the `proguard.ProGuard` API. All ProGuard settings are grouped under a `<proguard>` element, available both globally and per-JAR.
@@ -125,33 +147,13 @@ A bundled default config (`proguard-default.pro`) ships with femtojar and is pre
       <!-- per-JAR ProGuard overrides -->
       <proguard>
         <options>
-          <option>-keep class com.example.api.** { *; }</option>
+          <option>-keep class com.example.api.cli.** { *; }</option>
         </options>
       </proguard>
     </jar>
   </jars>
 </configuration>
 ```
-
-### Plugin Parameters
-
-| Parameter | Description | Default |
-| --- | --- | --- |
-| `jars` | List of JAR entries to reencode. Each entry has an `<in>` path and optional `<out>` path. | Required |
-| `jars[i].in` | Input JAR path (relative to `${project.build.directory}` if not absolute) | Required per entry |
-| `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
-| `compressionMode` | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
-| `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `false` |
-| `failOnError` | Fail build immediately on rewrite errors. | `true` |
-| `skip` | Skip plugin execution. | `false` |
-| `proguard.enabled` | Run ProGuard before reencoding. | `false` |
-| `proguard.prependDefaultConfig` | Prepend the bundled default ProGuard config. | `true` |
-| `proguard.configFile` | Path to a user ProGuard `.pro` config file. | Not set |
-| `proguard.options` | Inline ProGuard options (e.g. `-dontobfuscate`). | Not set |
-| `proguard.out` | Separate ProGuard output path. If omitted, a temp file is used. | Not set |
-| `proguard.libraryJars` | Additional `-libraryjars` paths for ProGuard. | Not set |
-
-All `proguard.*` parameters can also be specified per-JAR inside `<jar><proguard>...</proguard></jar>`. Per-JAR values override the global setting; null fields fall back to the global config.
 
 ### Per-JAR Overrides
 
@@ -226,15 +228,6 @@ mvn -Prun-its verify
 
 Integration fixtures are documented in [src/it/README.md](src/it/README.md).
 
-## CI Workflow
-
-GitHub Actions workflow is in [.github/workflows/ci.yml](.github/workflows/ci.yml) and includes:
-
-- OS/JDK test matrix
-- `run-its` integration verification
-- example project packaging check
-- artifact upload for plugin and CLI jars
-
 ## Release Script
 
 Release automation is in [release.py](release.py).
@@ -262,14 +255,10 @@ Default release flow:
 - optional `mvn clean deploy -P release`
 - commit + tag (and optional push)
 
-## Example Project
-
-See [example-project/pom.xml](example-project/pom.xml) for a complete usage example that shades dependencies, then re-encodes the output JAR.
-
 ## Support, Feedback, Contributing
 
 This project is open to feature requests/suggestions, bug reports etc.
-via [GitHub](https://github.com/parttimenerd/jstall/issues) issues.
+via [GitHub](https://github.com/parttimenerd/femtojar/issues) issues.
 Contribution and feedback are encouraged and always welcome.
 
 ## License

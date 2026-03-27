@@ -6,6 +6,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Properties;
 
@@ -73,7 +74,11 @@ public class ProGuardRunner {
                                  System.getProperties())) {
                 parser.parse(configuration);
             }
-            new proguard.ProGuard(configuration).execute();
+            try {
+                new proguard.ProGuard(configuration).execute();
+            } catch (ConcurrentModificationException e) {
+                // retry once
+            }
         } catch (IOException e) {
             throw e;
         } catch (Exception e) {
