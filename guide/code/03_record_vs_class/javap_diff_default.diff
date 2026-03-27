@@ -1,0 +1,39 @@
+--- Before.javap
++++ After.javap
+@@ -1,12 +1,12 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+          4: return
+ 
+-  static java.lang.String render(java.util.List<Before$Entry>);
++  static java.lang.String render(java.util.List<After$Entry>);
+     Code:
+          0: new           #7                  // class java/lang/StringBuilder
+          3: dup
+@@ -20,16 +20,16 @@
+         21: ifeq          63
+         24: aload_2
+         25: invokeinterface #22,  1           // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+-        30: checkcast     #26                 // class Before$Entry
++        30: checkcast     #26                 // class After$Entry
+         33: astore_3
+         34: aload_1
+         35: aload_3
+-        36: invokevirtual #28                 // Method Before$Entry.key:()Ljava/lang/String;
++        36: getfield      #28                 // Field After$Entry.key:Ljava/lang/String;
+         39: invokevirtual #32                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+         42: bipush        61
+         44: invokevirtual #36                 // Method java/lang/StringBuilder.append:(C)Ljava/lang/StringBuilder;
+         47: aload_3
+-        48: invokevirtual #39                 // Method Before$Entry.value:()Ljava/lang/String;
++        48: getfield      #39                 // Field After$Entry.value:Ljava/lang/String;
+         51: invokevirtual #32                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+         54: bipush        10
+         56: invokevirtual #36                 // Method java/lang/StringBuilder.append:(C)Ljava/lang/StringBuilder;

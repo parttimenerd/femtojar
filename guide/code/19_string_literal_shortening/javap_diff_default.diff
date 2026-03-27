@@ -1,0 +1,64 @@
+--- Before.javap
++++ After.javap
+@@ -1,5 +1,5 @@
+-Compiled from "Before.java"
+-public class Before {
++Compiled from "After.java"
++public class After {
+   private static final java.lang.String ERR_NULL;
+ 
+   private static final java.lang.String ERR_EMPTY;
+@@ -10,7 +10,7 @@
+ 
+   private static final java.lang.String ERR_PREFIX;
+ 
+-  public Before();
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -22,7 +22,7 @@
+          1: ifnonnull     14
+          4: new           #7                  // class java/lang/IllegalArgumentException
+          7: dup
+-         8: ldc           #11                 // String Validation failed: the input value must not be null or undefined
++         8: ldc           #11                 // String input is null
+         10: invokespecial #13                 // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+         13: athrow
+         14: aload_0
+@@ -30,7 +30,7 @@
+         18: ifeq          31
+         21: new           #7                  // class java/lang/IllegalArgumentException
+         24: dup
+-        25: ldc           #22                 // String Validation failed: the input value must not be an empty string
++        25: ldc           #22                 // String input is empty
+         27: invokespecial #13                 // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+         30: athrow
+         31: aload_0
+@@ -39,7 +39,7 @@
+         37: if_icmple     50
+         40: new           #7                  // class java/lang/IllegalArgumentException
+         43: dup
+-        44: ldc           #28                 // String Validation failed: the input value must not exceed sixty-four characters in total length
++        44: ldc           #28                 // String input exceeds 64 chars
+         46: invokespecial #13                 // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+         49: athrow
+         50: aload_0
+@@ -48,7 +48,7 @@
+         56: ifne          69
+         59: new           #7                  // class java/lang/IllegalArgumentException
+         62: dup
+-        63: ldc           #36                 // String Validation failed: the input value may only contain alphanumeric characters, underscores, or hyphens
++        63: ldc           #36                 // String input has invalid chars (use [A-Za-z0-9_-])
+         65: invokespecial #13                 // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+         68: athrow
+         69: aload_0
+@@ -63,7 +63,7 @@
+         86: if_icmpne     99
+         89: new           #7                  // class java/lang/IllegalArgumentException
+         92: dup
+-        93: ldc           #42                 // String Validation failed: the input value must not begin with a hyphen or underscore character
++        93: ldc           #42                 // String input must not start with - or _
+         95: invokespecial #13                 // Method java/lang/IllegalArgumentException."<init>":(Ljava/lang/String;)V
+         98: athrow
+         99: return

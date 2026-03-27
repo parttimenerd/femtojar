@@ -1,0 +1,49 @@
+--- Before.javap
++++ After.javap
+@@ -1,31 +1,23 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+          4: return
+ 
+-  static int value(Before$Mode);
++  static int value(After$Mode);
+     Code:
+          0: aload_0
+-         1: invokevirtual #7                  // Method Before$Mode.ordinal:()I
+-         4: tableswitch   { // 0 to 2
+-                       0: 42
+-                       1: 46
+-                       2: 50
+-                 default: 32
+-            }
+-        32: new           #13                 // class java/lang/MatchException
+-        35: dup
+-        36: aconst_null
+-        37: aconst_null
+-        38: invokespecial #15                 // Method java/lang/MatchException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+-        41: athrow
+-        42: iconst_1
+-        43: goto          51
+-        46: iconst_2
+-        47: goto          51
+-        50: iconst_3
+-        51: ireturn
++         1: getstatic     #7                  // Field After$Mode.A:LAfter$Mode;
++         4: if_acmpne     9
++         7: iconst_1
++         8: ireturn
++         9: aload_0
++        10: getstatic     #13                 // Field After$Mode.B:LAfter$Mode;
++        13: if_acmpne     18
++        16: iconst_2
++        17: ireturn
++        18: iconst_3
++        19: ireturn
+ }

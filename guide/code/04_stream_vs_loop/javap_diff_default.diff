@@ -1,0 +1,47 @@
+--- Before.javap
++++ After.javap
+@@ -1,6 +1,6 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -8,12 +8,26 @@
+ 
+   static int longest(java.util.List<java.lang.String>);
+     Code:
+-         0: aload_0
+-         1: invokeinterface #7,  1            // InterfaceMethod java/util/List.stream:()Ljava/util/stream/Stream;
+-         6: invokedynamic #13,  0             // InvokeDynamic #0:applyAsInt:()Ljava/util/function/ToIntFunction;
+-        11: invokeinterface #17,  2           // InterfaceMethod java/util/stream/Stream.mapToInt:(Ljava/util/function/ToIntFunction;)Ljava/util/stream/IntStream;
+-        16: invokeinterface #23,  1           // InterfaceMethod java/util/stream/IntStream.max:()Ljava/util/OptionalInt;
+-        21: iconst_0
+-        22: invokevirtual #29                 // Method java/util/OptionalInt.orElse:(I)I
+-        25: ireturn
++         0: iconst_0
++         1: istore_1
++         2: aload_0
++         3: invokeinterface #7,  1            // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
++         8: astore_2
++         9: aload_2
++        10: invokeinterface #13,  1           // InterfaceMethod java/util/Iterator.hasNext:()Z
++        15: ifeq          44
++        18: aload_2
++        19: invokeinterface #19,  1           // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
++        24: checkcast     #23                 // class java/lang/String
++        27: astore_3
++        28: aload_3
++        29: invokevirtual #25                 // Method java/lang/String.length:()I
++        32: iload_1
++        33: if_icmple     41
++        36: aload_3
++        37: invokevirtual #25                 // Method java/lang/String.length:()I
++        40: istore_1
++        41: goto          9
++        44: iload_1
++        45: ireturn
+ }

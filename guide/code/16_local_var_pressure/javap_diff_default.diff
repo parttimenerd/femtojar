@@ -1,0 +1,106 @@
+--- Before.javap
++++ After.javap
+@@ -1,6 +1,6 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -16,46 +16,53 @@
+          6: istore_3
+          7: ldc           #10                 // int -2147483648
+          9: istore        4
+-        11: aload_0
+-        12: arraylength
+-        13: istore        5
+-        15: iconst_0
+-        16: istore        6
+-        18: iload         6
+-        20: iload         5
+-        22: if_icmpge     67
+-        25: aload_0
+-        26: iload         6
+-        28: iaload
+-        29: istore        7
+-        31: iload_1
+-        32: iload         7
+-        34: iadd
+-        35: istore_1
+-        36: iload_2
+-        37: iload         7
+-        39: imul
+-        40: istore_2
+-        41: iload         7
+-        43: iload_3
+-        44: if_icmpge     50
+-        47: iload         7
+-        49: istore_3
+-        50: iload         7
++        11: iconst_0
++        12: istore        5
++        14: iload         5
++        16: aload_0
++        17: arraylength
++        18: if_icmpge     69
++        21: iload_1
++        22: aload_0
++        23: iload         5
++        25: iaload
++        26: iadd
++        27: istore_1
++        28: iload_2
++        29: aload_0
++        30: iload         5
++        32: iaload
++        33: imul
++        34: istore_2
++        35: aload_0
++        36: iload         5
++        38: iaload
++        39: iload_3
++        40: if_icmpge     48
++        43: aload_0
++        44: iload         5
++        46: iaload
++        47: istore_3
++        48: aload_0
++        49: iload         5
++        51: iaload
+         52: iload         4
+-        54: if_icmple     61
+-        57: iload         7
+-        59: istore        4
+-        61: iinc          6, 1
+-        64: goto          18
+-        67: iload_1
+-        68: iload_2
+-        69: iadd
+-        70: iload_3
++        54: if_icmple     63
++        57: aload_0
++        58: iload         5
++        60: iaload
++        61: istore        4
++        63: iinc          5, 1
++        66: goto          14
++        69: iload_1
++        70: iload_2
+         71: iadd
+-        72: iload         4
+-        74: iadd
+-        75: iload         5
+-        77: iadd
+-        78: ireturn
++        72: iload_3
++        73: iadd
++        74: iload         4
++        76: iadd
++        77: aload_0
++        78: arraylength
++        79: iadd
++        80: ireturn
+ }

@@ -1,0 +1,67 @@
+--- Before.javap
++++ After.javap
+@@ -1,6 +1,6 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -8,40 +8,18 @@
+ 
+   static int code(java.lang.String);
+     Code:
+-         0: aload_0
+-         1: astore_1
+-         2: iconst_m1
+-         3: istore_2
+-         4: aload_1
+-         5: invokevirtual #7                  // Method java/lang/String.hashCode:()I
+-         8: lookupswitch  { // 2
+-              1333069025: 36
+-              1737589560: 50
+-                 default: 61
+-            }
+-        36: aload_1
+-        37: ldc           #13                 // String --help
+-        39: invokevirtual #15                 // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+-        42: ifeq          61
+-        45: iconst_0
+-        46: istore_2
+-        47: goto          61
+-        50: aload_1
+-        51: ldc           #19                 // String --version
+-        53: invokevirtual #15                 // Method java/lang/String.equals:(Ljava/lang/Object;)Z
+-        56: ifeq          61
+-        59: iconst_1
+-        60: istore_2
+-        61: iload_2
+-        62: lookupswitch  { // 2
+-                       0: 88
+-                       1: 92
+-                 default: 96
+-            }
+-        88: iconst_1
+-        89: goto          97
+-        92: iconst_2
+-        93: goto          97
+-        96: iconst_0
+-        97: ireturn
++         0: ldc           #7                  // String --help
++         2: aload_0
++         3: invokevirtual #9                  // Method java/lang/String.equals:(Ljava/lang/Object;)Z
++         6: ifeq          11
++         9: iconst_1
++        10: ireturn
++        11: ldc           #15                 // String --version
++        13: aload_0
++        14: invokevirtual #9                  // Method java/lang/String.equals:(Ljava/lang/Object;)Z
++        17: ifeq          22
++        20: iconst_2
++        21: ireturn
++        22: iconst_0
++        23: ireturn
+ }

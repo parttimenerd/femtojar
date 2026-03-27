@@ -1,0 +1,53 @@
+--- Before.javap
++++ After.javap
+@@ -1,6 +1,6 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -10,22 +10,22 @@
+     Code:
+          0: iconst_0
+          1: istore_1
+-         2: aload_0
+-         3: invokeinterface #7,  1            // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+-         8: astore_2
+-         9: aload_2
+-        10: invokeinterface #13,  1           // InterfaceMethod java/util/Iterator.hasNext:()Z
+-        15: ifeq          38
+-        18: aload_2
+-        19: invokeinterface #19,  1           // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+-        24: checkcast     #23                 // class java/lang/Integer
+-        27: invokevirtual #25                 // Method java/lang/Integer.intValue:()I
+-        30: istore_3
+-        31: iload_1
+-        32: iload_3
+-        33: iadd
+-        34: istore_1
+-        35: goto          9
+-        38: iload_1
+-        39: ireturn
++         2: iconst_0
++         3: istore_2
++         4: iload_2
++         5: aload_0
++         6: invokeinterface #7,  1            // InterfaceMethod java/util/List.size:()I
++        11: if_icmpge     36
++        14: iload_1
++        15: aload_0
++        16: iload_2
++        17: invokeinterface #13,  2           // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
++        22: checkcast     #17                 // class java/lang/Integer
++        25: invokevirtual #19                 // Method java/lang/Integer.intValue:()I
++        28: iadd
++        29: istore_1
++        30: iinc          2, 1
++        33: goto          4
++        36: iload_1
++        37: ireturn
+ }

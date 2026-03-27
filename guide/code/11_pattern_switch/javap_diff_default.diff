@@ -1,0 +1,64 @@
+--- Before.javap
++++ After.javap
+@@ -1,6 +1,6 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -9,32 +9,23 @@
+   static int classify(java.lang.Object);
+     Code:
+          0: aload_0
+-         1: astore_1
+-         2: iconst_0
+-         3: istore_2
+-         4: aload_1
+-         5: iload_2
+-         6: invokedynamic #7,  0              // InvokeDynamic #0:typeSwitch:(Ljava/lang/Object;I)I
+-        11: tableswitch   { // -1 to 1
+-                      -1: 36
+-                       0: 40
+-                       1: 52
+-                 default: 66
+-            }
+-        36: iconst_m1
+-        37: goto          67
+-        40: aload_1
+-        41: checkcast     #11                 // class java/lang/String
+-        44: astore_3
+-        45: aload_3
+-        46: invokevirtual #13                 // Method java/lang/String.length:()I
+-        49: goto          67
+-        52: aload_1
+-        53: checkcast     #17                 // class java/lang/Integer
+-        56: astore        4
+-        58: aload         4
+-        60: invokevirtual #19                 // Method java/lang/Integer.intValue:()I
+-        63: goto          67
+-        66: iconst_0
+-        67: ireturn
++         1: ifnonnull     6
++         4: iconst_m1
++         5: ireturn
++         6: aload_0
++         7: instanceof    #7                  // class java/lang/String
++        10: ifeq          21
++        13: aload_0
++        14: checkcast     #7                  // class java/lang/String
++        17: invokevirtual #9                  // Method java/lang/String.length:()I
++        20: ireturn
++        21: aload_0
++        22: instanceof    #13                 // class java/lang/Integer
++        25: ifeq          36
++        28: aload_0
++        29: checkcast     #13                 // class java/lang/Integer
++        32: invokevirtual #15                 // Method java/lang/Integer.intValue:()I
++        35: ireturn
++        36: iconst_0
++        37: ireturn
+ }

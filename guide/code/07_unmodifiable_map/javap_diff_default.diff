@@ -1,0 +1,50 @@
+--- Before.javap
++++ After.javap
+@@ -1,8 +1,8 @@
+-Compiled from "Before.java"
+-public class Before {
++Compiled from "After.java"
++public class After {
+   static final java.util.Map<java.lang.String, java.lang.Integer> CODES;
+ 
+-  public Before();
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -13,21 +13,18 @@
+          0: new           #7                  // class java/util/HashMap
+          3: dup
+          4: invokespecial #9                  // Method java/util/HashMap."<init>":()V
+-         7: astore_0
+-         8: aload_0
+-         9: ldc           #10                 // String ok
+-        11: iconst_0
+-        12: invokestatic  #12                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+-        15: invokevirtual #18                 // Method java/util/HashMap.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+-        18: pop
+-        19: aload_0
+-        20: ldc           #22                 // String err
+-        22: iconst_1
+-        23: invokestatic  #12                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+-        26: invokevirtual #18                 // Method java/util/HashMap.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+-        29: pop
+-        30: aload_0
+-        31: invokestatic  #24                 // Method java/util/Collections.unmodifiableMap:(Ljava/util/Map;)Ljava/util/Map;
+-        34: putstatic     #30                 // Field CODES:Ljava/util/Map;
+-        37: return
++         7: putstatic     #10                 // Field CODES:Ljava/util/Map;
++        10: getstatic     #10                 // Field CODES:Ljava/util/Map;
++        13: ldc           #16                 // String ok
++        15: iconst_0
++        16: invokestatic  #18                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
++        19: invokeinterface #24,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
++        24: pop
++        25: getstatic     #10                 // Field CODES:Ljava/util/Map;
++        28: ldc           #30                 // String err
++        30: iconst_1
++        31: invokestatic  #18                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
++        34: invokeinterface #24,  3           // InterfaceMethod java/util/Map.put:(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
++        39: pop
++        40: return
+ }

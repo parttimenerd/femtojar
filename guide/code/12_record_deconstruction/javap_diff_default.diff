@@ -1,0 +1,83 @@
+--- Before.javap
++++ After.javap
+@@ -1,6 +1,6 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -9,57 +9,17 @@
+   static int sum(java.lang.Object);
+     Code:
+          0: aload_0
+-         1: dup
+-         2: invokestatic  #7                  // Method java/util/Objects.requireNonNull:(Ljava/lang/Object;)Ljava/lang/Object;
+-         5: pop
+-         6: astore_1
+-         7: iconst_0
+-         8: istore_2
+-         9: aload_1
+-        10: iload_2
+-        11: invokedynamic #13,  0             // InvokeDynamic #0:typeSwitch:(Ljava/lang/Object;I)I
+-        16: lookupswitch  { // 1
+-                       0: 36
+-                 default: 85
+-            }
+-        36: aload_1
+-        37: checkcast     #17                 // class Before$Pair
+-        40: astore_3
+-        41: aload_3
+-        42: invokevirtual #19                 // Method Before$Pair.left:()I
+-        45: istore        6
+-        47: iconst_1
+-        48: ifeq          72
+-        51: iload         6
+-        53: istore        4
+-        55: aload_3
+-        56: invokevirtual #23                 // Method Before$Pair.right:()I
+-        59: istore        6
+-        61: iconst_1
+-        62: ifeq          72
+-        65: iload         6
+-        67: istore        5
+-        69: goto          77
+-        72: iconst_1
+-        73: istore_2
+-        74: goto          9
+-        77: iload         4
+-        79: iload         5
+-        81: iadd
+-        82: goto          89
+-        85: iconst_0
+-        86: goto          89
+-        89: ireturn
+-        90: astore_1
+-        91: new           #28                 // class java/lang/MatchException
+-        94: dup
+-        95: aload_1
+-        96: invokevirtual #30                 // Method java/lang/Throwable.toString:()Ljava/lang/String;
+-        99: aload_1
+-       100: invokespecial #34                 // Method java/lang/MatchException."<init>":(Ljava/lang/String;Ljava/lang/Throwable;)V
+-       103: athrow
+-      Exception table:
+-         from    to  target type
+-            42    45    90   Class java/lang/Throwable
+-            56    59    90   Class java/lang/Throwable
++         1: instanceof    #7                  // class After$Pair
++         4: ifeq          22
++         7: aload_0
++         8: checkcast     #7                  // class After$Pair
++        11: astore_1
++        12: aload_1
++        13: invokevirtual #9                  // Method After$Pair.left:()I
++        16: aload_1
++        17: invokevirtual #13                 // Method After$Pair.right:()I
++        20: iadd
++        21: ireturn
++        22: iconst_0
++        23: ireturn
+ }

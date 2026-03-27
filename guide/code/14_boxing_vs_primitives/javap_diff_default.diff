@@ -1,0 +1,50 @@
+--- Before.javap
++++ After.javap
+@@ -1,12 +1,12 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+          4: return
+ 
+-  static int sum(java.util.List<java.lang.Integer>);
++  static int sum(int[]);
+     Code:
+          0: iconst_0
+          1: istore_1
+@@ -14,18 +14,16 @@
+          3: istore_2
+          4: iload_2
+          5: aload_0
+-         6: invokeinterface #7,  1            // InterfaceMethod java/util/List.size:()I
+-        11: if_icmpge     36
+-        14: iload_1
+-        15: aload_0
+-        16: iload_2
+-        17: invokeinterface #13,  2           // InterfaceMethod java/util/List.get:(I)Ljava/lang/Object;
+-        22: checkcast     #17                 // class java/lang/Integer
+-        25: invokevirtual #19                 // Method java/lang/Integer.intValue:()I
+-        28: iadd
+-        29: istore_1
+-        30: iinc          2, 1
+-        33: goto          4
+-        36: iload_1
+-        37: ireturn
++         6: arraylength
++         7: if_icmpge     22
++        10: iload_1
++        11: aload_0
++        12: iload_2
++        13: iaload
++        14: iadd
++        15: istore_1
++        16: iinc          2, 1
++        19: goto          4
++        22: iload_1
++        23: ireturn
+ }

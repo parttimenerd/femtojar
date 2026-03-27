@@ -1,0 +1,78 @@
+--- Before.javap
++++ After.javap
+@@ -1,6 +1,6 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+@@ -12,41 +12,28 @@
+          3: dup
+          4: invokespecial #9                  // Method java/lang/StringBuilder."<init>":()V
+          7: astore_1
+-         8: aload_1
+-         9: aload_0
+-        10: invokestatic  #10                 // Method appendLines:(Ljava/lang/StringBuilder;Ljava/util/List;)V
+-        13: aload_1
+-        14: invokestatic  #16                 // Method appendFooter:(Ljava/lang/StringBuilder;)V
+-        17: aload_1
+-        18: invokevirtual #20                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+-        21: areturn
+-
+-  private static void appendLines(java.lang.StringBuilder, java.util.List<java.lang.String>);
+-    Code:
+-         0: aload_1
+-         1: invokeinterface #24,  1           // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+-         6: astore_2
+-         7: aload_2
+-         8: invokeinterface #30,  1           // InterfaceMethod java/util/Iterator.hasNext:()Z
+-        13: ifeq          40
+-        16: aload_2
+-        17: invokeinterface #36,  1           // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+-        22: checkcast     #40                 // class java/lang/String
+-        25: astore_3
+-        26: aload_0
+-        27: aload_3
+-        28: invokevirtual #42                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+-        31: bipush        10
+-        33: invokevirtual #46                 // Method java/lang/StringBuilder.append:(C)Ljava/lang/StringBuilder;
+-        36: pop
+-        37: goto          7
+-        40: return
+-
+-  private static void appendFooter(java.lang.StringBuilder);
+-    Code:
+-         0: aload_0
+-         1: ldc           #49                 // String -- end --
+-         3: invokevirtual #42                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+-         6: pop
+-         7: return
++         8: aload_0
++         9: invokeinterface #10,  1           // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
++        14: astore_2
++        15: aload_2
++        16: invokeinterface #16,  1           // InterfaceMethod java/util/Iterator.hasNext:()Z
++        21: ifeq          48
++        24: aload_2
++        25: invokeinterface #22,  1           // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
++        30: checkcast     #26                 // class java/lang/String
++        33: astore_3
++        34: aload_1
++        35: aload_3
++        36: invokevirtual #28                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
++        39: bipush        10
++        41: invokevirtual #32                 // Method java/lang/StringBuilder.append:(C)Ljava/lang/StringBuilder;
++        44: pop
++        45: goto          15
++        48: aload_1
++        49: ldc           #35                 // String -- end --
++        51: invokevirtual #28                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
++        54: pop
++        55: aload_1
++        56: invokevirtual #37                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
++        59: areturn
+ }

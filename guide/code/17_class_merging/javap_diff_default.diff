@@ -1,0 +1,33 @@
+--- Before.javap
++++ After.javap
+@@ -1,15 +1,25 @@
+-Compiled from "Before.java"
+-public class Before {
+-  public Before();
++Compiled from "After.java"
++public class After {
++  public After();
+     Code:
+          0: aload_0
+          1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+          4: return
+ 
++  static int f();
++    Code:
++         0: iconst_1
++         1: ireturn
++
++  static int g();
++    Code:
++         0: iconst_2
++         1: ireturn
++
+   static int run();
+     Code:
+-         0: invokestatic  #7                  // Method Before$A.f:()I
+-         3: invokestatic  #13                 // Method Before$B.g:()I
++         0: invokestatic  #7                  // Method f:()I
++         3: invokestatic  #13                 // Method g:()I
+          6: iadd
+          7: ireturn
+ }

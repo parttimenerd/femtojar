@@ -240,6 +240,13 @@ CLI options:
 - `--benchmark-format <text|markdown|json>`: optional benchmark output format (default: `text`)
 - `-h`, `--help`: show usage
 
+## Bytecode Size Guide
+
+For source-level bytecode size reduction techniques (with measured before/after numbers and `javap` snippets), see:
+
+- [guide/BYTECODE_SIZE_GUIDE.md](guide/BYTECODE_SIZE_GUIDE.md)
+- [guide/code/README.md](guide/code/README.md)
+
 ## Comparison with Other Tools
 
 | Tool | Approach | Strengths | Limitations |
