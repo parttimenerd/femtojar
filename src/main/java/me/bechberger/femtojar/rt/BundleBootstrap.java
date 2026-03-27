@@ -48,7 +48,7 @@ public class BundleBootstrap extends ClassLoader {
 
     /**
      * Reads and parses packed blob resource.
-        * Format: [int indexSize][indexBytes][classBlobBytes].
+     * Format: [int indexSize][indexBytes][classBlobBytes].
      * Index format: version, class entries, resource entries, total size.
      */
     private void readPackedBlob() throws IOException {

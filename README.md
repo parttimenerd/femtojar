@@ -7,20 +7,15 @@ If you want, it runs [ProGuard](https://www.guardsquare.com/proguard) before han
 
 **It's for executable JARs, like [jstall](https://github.com/parttimenerd/jstall), not libraries.**
 
-_Femtojar is still an early proof-of-concept, but initial results show promising size reductions of 15-30% for tested shaded/uber JARs, going up to 60% in some cases with ProGuard._
+_Femtojar is still an early proof-of-concept, but initial results show promising size reductions of 15-30% for tested shaded/uber JARs, going up to 70% in some cases with ProGuard._
 
 ## Features
 
-- Single-blob class compression for better cross-class redundancy
+- Novel single-blob class compression for better cross-class redundancy
 - Zopfli compression mode to squeeze out extra bytes at the cost of longer build times
 - Bundling of non-`META-INF/*` resources into the blob for better compression (with some caveats)
 - Optional [ProGuard](https://www.guardsquare.com/proguard) shrinking/optimization before reencoding
 - Maven plugin and standalone CLI
-
-### Comparison with Other Tools
-
-I only found [JarTighten](https://github.com/NeRdTheNed/JarTighten) in my research, which only optimizes the
-ZIP file entries. Feel free to point out other tools.
 
 ## Maven Plugin
 
@@ -32,7 +27,6 @@ Important:
 
 - Use this for executable (typically shaded/uber) JARs.
 - It is not designed for library JAR publishing.
-- With `bundleResources=true`, `getResourceAsStream()` works for bundled resources, but URL-based resource loading (`getResource()`) may break for frameworks expecting real ZIP entries.
 
 ### Minimal Plugin Configuration
 
@@ -165,6 +159,32 @@ In addition to ProGuard, the following settings can be overridden per-JAR:
 | `jars[i].bundleResources` | Override global `bundleResources`. |
 | `jars[i].proguard` | Override global ProGuard config (same sub-elements). |
 
+## Resource Bundling Caveats
+
+When `bundleResources=true` (default), non-`META-INF/*` resources are packed into the compressed blob for better compression. However, this has limitations:
+
+- ✅ **Works:** `ClassLoader.getResourceAsStream()` and `Class.getResourceAsStream()` — stream-based access is fully functional
+- ⚠️ **May break:** `ClassLoader.getResource()` and `Class.getResource()` — URL-based resource loading fails because resources are no longer actual ZIP entries
+- ⚠️ **Framework issues:** Libraries that scan JAR entries directly or expect real `jar://` URLs may break (e.g., frameworks doing classpath resource discovery)
+
+**To disable resource bundling** and keep resources as normal ZIP entries:
+
+```xml
+<configuration>
+  <bundleResources>false</bundleResources>
+  <!-- ... rest of config -->
+</configuration>
+```
+
+Or per-JAR:
+
+```xml
+<jar>
+  <in>${project.build.finalName}.jar</in>
+  <bundleResources>false</bundleResources>
+</jar>
+```
+
 ## CLI
 
 A standalone CLI jar is built as an attached shaded artifact.
@@ -217,6 +237,16 @@ CLI options:
 - `--benchmark`: run a non-destructive benchmark matrix and print size/time comparisons
 - `--benchmark-format <text|markdown|json>`: optional benchmark output format (default: `text`)
 - `-h`, `--help`: show usage
+
+## Comparison with Other Tools
+
+| Tool | Approach | Strengths | Limitations |
+| --- | --- | --- | --- |
+| [JarTighten](https://github.com/NeRdTheNed/JarTighten) | ZIP entry optimization | Minimal changes to JAR structure, focused recompression | Limited to ZIP compression, no bytecode optimization |
+| [Pack200](https://docs.oracle.com/javase/8/docs/technotes/guides/deployment/deployment-guide/pack200.html) | Native compression with cross-class deduplication | Achieved 4-10× reduction, follows Java standards | Deprecated in Java 11, removed in Java 14, maintenance burden |
+| [jlink](https://docs.oracle.com/en/java/javase/21/docs/specs/man/jlink.html) | Custom runtime images (JDK 9+) | Reduces runtime size by excluding unused modules | Requires modular JDK, creates platform-specific artifacts |
+
+Feel free to suggest additions or corrections to this comparison.
 
 ## Build and Test
 
