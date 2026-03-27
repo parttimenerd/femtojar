@@ -10,6 +10,10 @@ This script:
 5. Runs tests and builds artifacts with Maven release profile
 6. Deploys to Maven repositories
 7. Commits, tags, and optionally pushes
+8. Creates a GitHub release (requires gh CLI)
+
+Also supports --github-release-only to create a GitHub release for the current version
+without bumping versions or making other changes.
 """
 
 from __future__ import annotations
@@ -233,6 +237,114 @@ class ReleaseManager:
         self.run_command(["git", "push"], "Pushing commits")
         self.run_command(["git", "push", "--tags"], "Pushing tags")
 
+    def create_github_release(self, version: str) -> None:
+        """Create a GitHub release with formatted notes and JAR assets."""
+        tag = f"v{version}"
+        
+        # Get changelog entry for this specific version
+        changelog_entry = self.get_version_changelog_entry(version)
+        if not changelog_entry:
+            changelog_entry = f"Release {version}\n\nSee [CHANGELOG.md](https://github.com/parttimenerd/femtojar/blob/main/CHANGELOG.md) for details."
+
+        # Format release notes
+        release_notes = f"""{changelog_entry}
+
+## Maven
+
+### Plugin
+```xml
+<plugin>
+  <groupId>me.bechberger</groupId>
+  <artifactId>femtojar</artifactId>
+  <version>{version}</version>
+  <executions>
+    <execution>
+      <id>recompress-jar</id>
+      <phase>package</phase>
+      <goals>
+        <goal>reencode-jars</goal>
+      </goals>
+    </execution>
+  </executions>
+  <configuration>
+    <jars>
+      <jar>
+        <in>${{project.build.finalName}}.jar</in>
+      </jar>
+    </jars>
+  </configuration>
+</plugin>
+```
+
+### CLI
+```bash
+java -jar femtojar-{version}-cli.jar app.jar app-optimized.jar
+```
+"""
+
+        # Create release notes file
+        notes_file = self.project_root / '.release-notes.md'
+        notes_file.write_text(release_notes)
+
+        try:
+            # Build jar paths
+            jar_path = self.project_root / 'target' / f'femtojar-{version}.jar'
+            cli_jar_path = self.project_root / 'target' / f'femtojar-{version}-cli.jar'
+
+            assets = []
+            if jar_path.exists():
+                assets.append(str(jar_path))
+            else:
+                print(f"⚠️  JAR not found at {jar_path}")
+
+            if cli_jar_path.exists():
+                assets.append(str(cli_jar_path))
+            else:
+                print(f"⚠️  CLI JAR not found at {cli_jar_path}")
+
+            create_cmd = ['gh', 'release', 'create', tag,
+                          '--title', f'Release {version}',
+                          '--notes-file', str(notes_file)] + assets
+            
+            if not assets:
+                print("⚠️  No JAR assets found, creating release without assets")
+
+            # If the release already exists (e.g. rerun), fall back to uploading assets
+            try:
+                self.run_command(create_cmd, "Creating GitHub release")
+            except RuntimeError:
+                if assets:
+                    upload_cmd = ['gh', 'release', 'upload', tag, '--clobber'] + assets
+                    self.run_command(upload_cmd, "Uploading GitHub release assets")
+                else:
+                    raise
+        except Exception as e:
+            print(f"⚠️  Failed to create GitHub release: {e}")
+            print("   The git tag was created, but the GitHub release was not.")
+            print("   You can create it manually at: https://github.com/parttimenerd/femtojar/releases")
+        finally:
+            # Clean up notes file
+            if notes_file.exists():
+                notes_file.unlink()
+
+    def get_version_changelog_entry(self, version: str) -> str:
+        """Extract changelog entry for a specific released version."""
+        if not self.changelog.exists():
+            return ""
+
+        content = self.changelog.read_text(encoding="utf-8")
+        
+        # Look for [version] section
+        match = re.search(
+            rf'## \[{re.escape(version)}\][^\n]*\n(.*?)(?=\n## \[|$)',
+            content,
+            re.DOTALL
+        )
+        
+        if match:
+            return match.group(1).strip()
+        return ""
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Release femtojar")
@@ -241,6 +353,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patch", action="store_true", help="Bump patch version")
     parser.add_argument("--no-its", action="store_true", help="Skip run-its integration tests")
     parser.add_argument("--no-push", action="store_true", help="Skip git push")
+    parser.add_argument("--no-github-release", action="store_true", help="Skip GitHub release creation")
+    parser.add_argument("--github-release-only", action="store_true", help="Create GitHub release for current version only (no version bump)")
     parser.add_argument("--dry-run", action="store_true", help="Show planned changes only")
     return parser.parse_args()
 
@@ -249,6 +363,14 @@ def main() -> None:
     args = parse_args()
     root = Path(__file__).resolve().parent
     manager = ReleaseManager(root)
+
+    # Handle GitHub release only mode
+    if args.github_release_only:
+        version = manager.get_current_version()
+        print(f"Creating GitHub release for current version: {version}")
+        manager.create_github_release(version)
+        print(f"\nGitHub release created for version {version}")
+        return
 
     bump = "minor"
     if args.major:
@@ -284,6 +406,9 @@ def main() -> None:
 
         if not args.no_push:
             manager.git_push()
+
+        if not args.no_github_release:
+            manager.create_github_release(new)
 
         print("\nRelease completed successfully.")
         print(f"Version: {new}")

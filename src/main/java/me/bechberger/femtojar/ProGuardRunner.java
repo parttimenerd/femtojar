@@ -3,8 +3,10 @@ package me.bechberger.femtojar;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -66,7 +68,11 @@ public class ProGuardRunner {
         // Redirect System.out to stderr during ProGuard execution to prevent
         // ProGuard notes/version banners from polluting structured output (JSON).
         PrintStream origOut = System.out;
+        PrintStream origErr = System.err;
+        ByteArrayOutputStream proguardErr = new ByteArrayOutputStream();
+        PrintStream capturedErr = new PrintStream(proguardErr, true, StandardCharsets.UTF_8);
         System.setOut(System.err);
+        System.setErr(capturedErr);
         try {
             proguard.Configuration configuration = new proguard.Configuration();
             try (proguard.ConfigurationParser parser =
@@ -86,6 +92,17 @@ public class ProGuardRunner {
             e.printStackTrace(System.err);
             throw new IOException("ProGuard failed (" + e.getClass().getSimpleName() + "): " + detail, e);
         } finally {
+            capturedErr.flush();
+            String errText = proguardErr.toString(StandardCharsets.UTF_8);
+            for (String line : errText.split("\\R")) {
+                if ("ProGuard, version undefined".equals(line.trim())) {
+                    continue;
+                }
+                if (!line.isEmpty()) {
+                    origErr.println(line);
+                }
+            }
+            System.setErr(origErr);
             System.setOut(origOut);
         }
     }

@@ -1,6 +1,6 @@
 # femtojar
 
-[![CI](https://github.com/parttimenerd/femtojar/actions/workflows/ci.yml/badge.svg)](https://github.com/parttimenerd/femtojar/actions/workflows/ci.yml)
+[![CI](https://github.com/parttimenerd/femtojar/actions/workflows/ci.yml/badge.svg)](https://github.com/parttimenerd/femtojar/actions/workflows/ci.yml) [![Maven Central Version](https://img.shields.io/maven-central/v/me.bechberger/femtojar)](https://search.maven.org/artifact/me.bechberger/femtojar)
 
 femtojar shrinks executable JARs by bundling `.class` files and resources into a single compressed blob and loading them through a tiny bootstrap classloader at runtime.
 If you want, it runs [ProGuard](https://www.guardsquare.com/proguard) before hand to further optimize/shrink the JAR.
@@ -13,9 +13,11 @@ _Femtojar is still an early proof-of-concept, but initial results show promising
 
 - Novel single-blob class compression for better cross-class redundancy
 - Zopfli compression mode to squeeze out extra bytes at the cost of longer build times
-- Bundling of non-`META-INF/*` resources into the blob for better compression (with some caveats)
+- Bundling of non-`META-INF/*` resources into the blob for better compression (with some caveats, see below)
 - Optional [ProGuard](https://www.guardsquare.com/proguard) shrinking/optimization before reencoding
 - Maven plugin and standalone CLI
+
+Important: Always black box test the resulting JARs, especially if using ProGuard, as bytecode transformations can break edge cases.
 
 ## Maven Plugin
 
