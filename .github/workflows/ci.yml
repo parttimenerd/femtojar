@@ -142,32 +142,35 @@ jobs:
         run: |
           REPO="parttimenerd/condensed-data"
 
-          # Find latest successful workflow run
-          RUNS=$(curl -fsSL "https://api.github.com/repos/${REPO}/actions/runs?status=success&per_page=20")
-          RUN_ID=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.conclusion == "success") | .id' | head -1)
-          RUN_URL=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.conclusion == "success") | .html_url' | head -1)
+          # Find latest successful ci.yml workflow run that still has artifacts
+          RUNS=$(curl -fsSL "https://api.github.com/repos/${REPO}/actions/workflows/ci.yml/runs?status=success&per_page=10")
+          RUN_IDS=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.conclusion == "success") | .id')
 
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "::error::Could not find a successful workflow run for ${REPO}"
+          if [ -z "$RUN_IDS" ]; then
+            echo "::error::Could not find any successful ci.yml workflow runs for ${REPO}"
+            exit 1
+          fi
+
+          RUN_ID=""
+          RUN_URL=""
+          for CANDIDATE in $RUN_IDS; do
+            ARTIFACTS=$(curl -fsSL "https://api.github.com/repos/${REPO}/actions/runs/${CANDIDATE}/artifacts")
+            ARTIFACT_NAME=$(echo "$ARTIFACTS" | jq -r '.artifacts[] | select(.name == "condensed-data.jar") | .name' | head -1)
+            if [ -n "$ARTIFACT_NAME" ]; then
+              RUN_ID="$CANDIDATE"
+              RUN_URL=$(echo "$RUNS" | jq -r ".workflow_runs[] | select(.id == ${CANDIDATE}) | .html_url")
+              break
+            fi
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::No recent ci.yml run has a condensed-data.jar artifact (all expired?)"
             exit 1
           fi
 
           echo "Using run: $RUN_ID"
           echo "Run URL: $RUN_URL"
           echo "CONDENSED_DATA_RUN_URL=$RUN_URL" >> "$GITHUB_ENV"
-          
-          # Get artifacts list for the run
-          ARTIFACTS=$(curl -fsSL https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts)
-          
-          # Verify the run publishes the expected artifact name.
-          ARTIFACT_NAME=$(echo "$ARTIFACTS" | jq -r '.artifacts[] | select(.name == "condensed-data.jar") | .name' | head -1)
-          
-          if [ -z "$ARTIFACT_NAME" ]; then
-            echo "::error::Could not find condensed-data.jar artifact in run ${RUN_ID}"
-            echo "Available artifacts:"
-            echo "$ARTIFACTS" | jq -r '.artifacts[]?.name' | sed 's/^/- /'
-            exit 1
-          fi
           
           DOWNLOAD_URL="https://nightly.link/${REPO}/actions/runs/${RUN_ID}/condensed-data.jar.zip"
           PLATFORM_URL="https://nightly.link/${REPO}/actions/runs/${RUN_ID}/platform-jars.zip"
