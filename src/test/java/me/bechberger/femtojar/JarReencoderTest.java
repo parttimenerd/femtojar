@@ -18,9 +18,7 @@ import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class JarReencoderTest {
 
@@ -42,7 +40,7 @@ class JarReencoderTest {
         Map<String, byte[]> after = readJarContents(jarPath);
         assertEquals(before.keySet(), after.keySet());
         for (String name : before.keySet()) {
-            assertTrue(Arrays.equals(before.get(name), after.get(name)), "Content changed for entry: " + name);
+            assertArrayEquals(before.get(name), after.get(name), "Content changed for entry: " + name);
         }
     }
 
@@ -63,7 +61,7 @@ class JarReencoderTest {
         try (JarFile jar = new JarFile(jarPath.toFile())) {
             // Check manifest has correct main class
             Manifest manifest = jar.getManifest();
-            assertTrue(manifest != null);
+            assertNotNull(manifest);
             String mainClass = manifest.getMainAttributes().getValue("Main-Class");
             assertEquals("me.bechberger.femtojar.rt.BundleBootstrap", mainClass);
             String originalMainClass = manifest.getMainAttributes().getValue("X-Original-Main-Class");
@@ -72,16 +70,15 @@ class JarReencoderTest {
             assertNotNull(femtojarVersion, "Manifest should include X-Femtojar-Version");
 
             // Check bundled files exist
-            assertTrue(jar.getEntry("__classes.zlib") != null, "Missing __classes.zlib");
-            assertTrue(jar.getEntry("me/bechberger/femtojar/rt/BundleBootstrap.class") != null, "Missing BundleBootstrap");
+            assertNotNull(jar.getEntry("__classes.zlib"), "Missing __classes.zlib");
+            assertNotNull(jar.getEntry("me/bechberger/femtojar/rt/BundleBootstrap.class"), "Missing BundleBootstrap");
 
             // Check resources are preserved
             ZipEntry resourceEntry = jar.getEntry("application.properties");
-            assertTrue(resourceEntry == null, "Resource should be bundled into blob when bundleResources=true");
+            assertNull(resourceEntry, "Resource should be bundled into blob when bundleResources=true");
 
             // META-INF resources remain as regular entries
-            assertTrue(jar.getEntry("META-INF/services/com.example.Service") != null,
-                    "META-INF resources should remain normal entries");
+            assertNotNull(jar.getEntry("META-INF/services/com.example.Service"), "META-INF resources should remain normal entries");
         }
     }
 
@@ -113,7 +110,7 @@ class JarReencoderTest {
         reencoder.reencodeInPlaceBundled(jarPath, true, 100, true);
 
         try (JarFile jar = new JarFile(jarPath.toFile())) {
-            assertTrue(jar.getEntry("__classes.zlib") != null, "Missing __classes.zlib after second pass");
+            assertNotNull(jar.getEntry("__classes.zlib"), "Missing __classes.zlib after second pass");
         }
     }
 

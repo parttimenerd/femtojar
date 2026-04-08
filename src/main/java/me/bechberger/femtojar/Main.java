@@ -17,7 +17,7 @@ import me.bechberger.femtocli.annotations.Parameters;
         mixinStandardHelpOptions = true)
 public class Main implements Callable<Integer> {
 
-    @Parameters(index = "0", description = "Input JAR file")
+    @Parameters(description = "Input JAR file")
     public Path inputJar;
 
     @Parameters(index = "1", arity = "0..1", description = "Output JAR file")

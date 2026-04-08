@@ -19,7 +19,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class MainTest {
 
@@ -32,33 +33,33 @@ class MainTest {
 
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(), "--deflate"});
+                inputJar.toString(), outputJar.toString(), "--deflate");
 
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
-        assertTrue(Files.exists(outputJar));
-        assertTrue(result.out().contains("Re-encoded"), () -> result.out());
+        assertThat(Files.exists(outputJar)).isTrue();
+        assertThat(result.out()).contains("Re-encoded");
 
         // Input jar should remain unchanged when output jar is specified.
-        assertNotEquals(0, Files.readAllBytes(inputJar).length);
+        assertThat(Files.readAllBytes(inputJar).length).isNotZero();
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
-            assertNotNull(jar.getEntry("__classes.zlib"));
-            assertNotNull(jar.getEntry("META-INF/MANIFEST.MF"));
+            assertThat(jar.getEntry("__classes.zlib")).isNotNull();
+            assertThat(jar.getEntry("META-INF/MANIFEST.MF")).isNotNull();
         }
     }
 
     @Test
     void showsUsageForHelp() {
-        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{"--help"});
+        RunResult result = FemtoCli.runCaptured(new Main(), "--help");
         assertEquals(0, result.exitCode());
-        assertTrue(result.out().contains("Usage:"), () -> result.out());
+        assertThat(result.out()).contains("Usage:");
     }
 
     @Test
     void failsForUnknownOption() {
-        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{"--does-not-exist"});
+        RunResult result = FemtoCli.runCaptured(new Main(), "--does-not-exist");
         assertEquals(2, result.exitCode());
-        assertTrue(result.err().contains("Unknown option"), () -> result.err());
+        assertThat(result.err()).contains("Unknown option");
     }
 
     @Test
@@ -67,9 +68,9 @@ class MainTest {
         Path inputJar = tempDir.resolve("input.jar");
         createSampleJar(inputJar);
 
-        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{inputJar.toString(), "--compression", "ultra"});
+        RunResult result = FemtoCli.runCaptured(new Main(), inputJar.toString(), "--compression", "ultra");
         assertEquals(2, result.exitCode());
-        assertTrue(result.err().contains("Invalid value for --compression"), () -> result.err());
+        assertThat(result.err()).contains("Invalid value for --compression");
     }
 
     @Test
@@ -78,16 +79,16 @@ class MainTest {
         Path inputJar = tempDir.resolve("input.jar");
         createSampleJar(inputJar);
 
-        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{"--benchmark", inputJar.toString(), "--benchmark-format", "html"});
+        RunResult result = FemtoCli.runCaptured(new Main(), "--benchmark", inputJar.toString(), "--benchmark-format", "html");
         assertEquals(2, result.exitCode());
-        assertTrue(result.err().contains("Invalid value for --benchmark-format"), () -> result.err());
+        assertThat(result.err()).contains("Invalid value for --benchmark-format");
     }
 
     @Test
     void failsForMissingInputJarFile() {
-        RunResult result = FemtoCli.runCaptured(new Main(), new String[]{"definitely-missing.jar"});
+        RunResult result = FemtoCli.runCaptured(new Main(), "definitely-missing.jar");
         assertEquals(2, result.exitCode());
-        assertTrue(result.err().contains("Input JAR does not exist"), () -> result.err());
+        assertThat(result.err()).contains("Input JAR does not exist");
     }
 
     @Test
@@ -99,12 +100,12 @@ class MainTest {
 
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(), "--deflate"});
+                inputJar.toString(), outputJar.toString(), "--deflate");
 
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
         try (JarFile jar = new JarFile(outputJar.toFile())) {
-            assertNotNull(jar.getEntry("__classes.zlib"));
-            assertNull(jar.getEntry("app.properties"));
+            assertThat(jar.getEntry("__classes.zlib")).isNotNull();
+            assertThat(jar.getEntry("app.properties")).isNull();
         }
     }
 
@@ -117,7 +118,7 @@ class MainTest {
         byte[] originalBytes = Files.readAllBytes(inputJar);
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), "--benchmark"});
+                inputJar.toString(), "--benchmark");
 
         String output = result.out();
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
@@ -129,7 +130,7 @@ class MainTest {
                 .contains("Best reduction:");
 
         byte[] currentBytes = Files.readAllBytes(inputJar);
-        assertNotEquals(0, currentBytes.length);
+        assertThat(currentBytes.length).isNotZero();
         assertArrayEquals(originalBytes, currentBytes);
     }
 
@@ -141,7 +142,7 @@ class MainTest {
 
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), "--benchmark", "--benchmark-format", "markdown"});
+                inputJar.toString(), "--benchmark", "--benchmark-format", "markdown");
 
         String output = result.out();
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
@@ -159,7 +160,7 @@ class MainTest {
 
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), "--benchmark", "--benchmark-format", "json"});
+                inputJar.toString(), "--benchmark", "--benchmark-format", "json");
 
         String output = result.out();
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
@@ -178,7 +179,7 @@ class MainTest {
 
         RunResult encodeResult = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(), "--deflate"});
+                inputJar.toString(), outputJar.toString(), "--deflate");
         assertEquals(0, encodeResult.exitCode(), () -> "stderr: " + encodeResult.err());
 
         Process process = new ProcessBuilder(List.of("java", "-jar", outputJar.toString(), "one", "two"))
@@ -191,7 +192,9 @@ class MainTest {
         }
 
         int runExit = process.waitFor();
-        assertEquals(0, runExit, () -> "Process failed. Output:\n" + output);
+        assertThat(runExit)
+                .withFailMessage("Process failed. Output:\n%s", output)
+                .isZero();
         assertThat(output)
                 .contains("CLI_EXEC_OK")
                 .contains("ARG_COUNT=2");
@@ -214,15 +217,15 @@ class MainTest {
 
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(),
-                        "--proguard", "--proguard-config", pgConfig.toString(), "--deflate"});
+                inputJar.toString(), outputJar.toString(),
+                "--proguard", "--proguard-config", pgConfig.toString(), "--deflate");
 
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
-        assertTrue(Files.exists(outputJar));
-        assertTrue(result.out().contains("Re-encoded"), () -> result.out());
+        assertThat(Files.exists(outputJar)).isTrue();
+        assertThat(result.out()).contains("Re-encoded");
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
-            assertNotNull(jar.getEntry("__classes.zlib"));
+            assertThat(jar.getEntry("__classes.zlib")).isNotNull();
         }
     }
 
@@ -243,13 +246,13 @@ class MainTest {
 
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(),
-                        "--proguard", "--proguard-config", pgConfig.toString(),
-                        "--proguard-out", pgOut.toString(), "--deflate"});
+                inputJar.toString(), outputJar.toString(),
+                "--proguard", "--proguard-config", pgConfig.toString(),
+                "--proguard-out", pgOut.toString(), "--deflate");
 
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
-        assertTrue(Files.exists(pgOut), "ProGuard output JAR should exist");
-        assertTrue(Files.exists(outputJar), "Final output JAR should exist");
+        assertThat(Files.exists(pgOut)).isTrue();
+        assertThat(Files.exists(outputJar)).isTrue();
     }
 
     @Test
@@ -270,13 +273,13 @@ class MainTest {
 
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(),
-                        "--proguard", "--no-proguard-default-config",
-                        "--proguard-config", pgConfig.toString(),
-                        "--deflate"});
+                inputJar.toString(), outputJar.toString(),
+                "--proguard", "--no-proguard-default-config",
+                "--proguard-config", pgConfig.toString(),
+                "--deflate");
 
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
-        assertTrue(Files.exists(outputJar));
+        assertThat(Files.exists(outputJar)).isTrue();
     }
 
     @Test
@@ -288,7 +291,7 @@ class MainTest {
 
         RunResult encodeResult = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(), "--deflate"});
+                inputJar.toString(), outputJar.toString(), "--deflate");
         assertEquals(0, encodeResult.exitCode(), () -> "stderr: " + encodeResult.err());
 
         String output = runJar(outputJar);
@@ -310,11 +313,11 @@ class MainTest {
 
         RunResult encodeResult = FemtoCli.runCaptured(
                 new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(), "--deflate", "--no-bundle-resources"});
+                inputJar.toString(), outputJar.toString(), "--deflate", "--no-bundle-resources");
         assertEquals(0, encodeResult.exitCode(), () -> "stderr: " + encodeResult.err());
 
         try (JarFile jar = new JarFile(outputJar.toFile())) {
-            assertNotNull(jar.getEntry("app.properties"), "Expected app.properties to remain a normal JAR entry");
+            assertThat(jar.getEntry("app.properties")).isNotNull();
         }
 
         String output = runJar(outputJar);
@@ -338,7 +341,9 @@ class MainTest {
         }
 
         int runExit = process.waitFor();
-        assertEquals(0, runExit, () -> "Process failed. Output:\n" + output);
+        assertThat(runExit)
+                .withFailMessage("Process failed. Output:\n%s", output)
+                .isZero();
         return output;
     }
 

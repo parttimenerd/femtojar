@@ -76,7 +76,7 @@ public class BenchmarkRunner {
         ExecutorService executor = Executors.newFixedThreadPool(workerCount);
         List<Future<BenchmarkResult>> futures = new ArrayList<>();
         for (BenchmarkCase benchmarkCase : CASES) {
-            futures.add(executor.submit((Callable<BenchmarkResult>) () ->
+            futures.add(executor.submit(() ->
                     runSingleCase(inputJar, benchmarkCase, proguardConfig, pgOptions, noProguardDefaultConfig)));
         }
         executor.shutdown();

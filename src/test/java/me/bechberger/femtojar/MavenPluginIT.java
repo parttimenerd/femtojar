@@ -19,10 +19,8 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 @EnabledIfSystemProperty(named = "it.projects.dir", matches = ".+")
@@ -33,12 +31,9 @@ class MavenPluginIT {
     @BeforeAll
     static void setup() {
         String itProjectsDirProperty = System.getProperty("it.projects.dir");
-        assertNotNull(itProjectsDirProperty, "it.projects.dir system property must be set");
-        if (itProjectsDirProperty.isBlank()) {
-            fail("it.projects.dir system property must not be blank");
-        }
+        assertThat(itProjectsDirProperty).isNotBlank();
         itProjectsDir = Paths.get(itProjectsDirProperty);
-        assertTrue(Files.exists(itProjectsDir), "Integration test projects directory must exist: " + itProjectsDir);
+        assertThat(Files.exists(itProjectsDir)).isTrue();
     }
 
     @Test
@@ -46,13 +41,16 @@ class MavenPluginIT {
         Path jar = assertScenarioJarExists("basic-maven-plugin", "basic-maven-plugin-1.0-SNAPSHOT.jar");
         assertCommonBundledManifest(jar, "me.bechberger.it.BasicApp");
         assertCommonBundledLayout(jar);
-        assertFalse(hasEntry(jar, "me/bechberger/it/BasicApp.class"), "Original class should not remain as a jar entry");
+        assertThat(hasEntry(jar, "me/bechberger/it/BasicApp.class"))
+                .withFailMessage("Original class should not remain as a jar entry")
+                .isFalse();
         assertJarIsExecutable(jar);
 
         ProcessResult run = runJar(jar, List.of("alpha", "beta"));
         assertEquals(0, run.exitCode, "basic scenario should exit 0. Output:\n" + run.output);
-        assertTrue(run.output.contains("BASIC_IT_OK"), "Expected BASIC_IT_OK output. Output:\n" + run.output);
-        assertTrue(run.output.contains("ARGS=[alpha, beta]"), "Expected args output. Output:\n" + run.output);
+        assertThat(run.output)
+                .contains("BASIC_IT_OK")
+                .contains("ARGS=[alpha, beta]");
     }
 
     @Test
@@ -60,13 +58,16 @@ class MavenPluginIT {
         Path jar = assertScenarioJarExists("bundle-resources", "bundle-resources-1.0-SNAPSHOT.jar");
         assertCommonBundledManifest(jar, "me.bechberger.it.ResourceApp");
         assertCommonBundledLayout(jar);
-        assertFalse(hasEntry(jar, "app.properties"), "Bundled resource should not remain as standalone jar entry");
+        assertThat(hasEntry(jar, "app.properties"))
+                .withFailMessage("Bundled resource should not remain as standalone jar entry")
+                .isFalse();
         assertJarIsExecutable(jar);
 
         ProcessResult run = runJar(jar, List.of());
         assertEquals(0, run.exitCode, "bundle-resources scenario should exit 0. Output:\n" + run.output);
-        assertTrue(run.output.contains("RESOURCE_IT_OK"), "Expected RESOURCE_IT_OK output. Output:\n" + run.output);
-        assertTrue(run.output.contains("RESOURCE_VALUE=name=bundled-resource"), "Expected bundled resource value output. Output:\n" + run.output);
+        assertThat(run.output)
+                .contains("RESOURCE_IT_OK")
+                .contains("RESOURCE_VALUE=name=bundled-resource");
     }
 
     @Test
@@ -78,7 +79,7 @@ class MavenPluginIT {
 
         ProcessResult run = runJar(jar, List.of());
         assertEquals(0, run.exitCode, "deflater-fallback scenario should exit 0. Output:\n" + run.output);
-        assertTrue(run.output.contains("DEFLATER_IT_OK"), "Expected DEFLATER_IT_OK output. Output:\n" + run.output);
+        assertThat(run.output).contains("DEFLATER_IT_OK");
     }
 
     @Test
@@ -93,7 +94,7 @@ class MavenPluginIT {
 
         ProcessResult run = runJar(jar, List.of());
         assertEquals(0, run.exitCode, "idempotency scenario should exit 0. Output:\n" + run.output);
-        assertTrue(run.output.contains("IDEMPOTENCY_IT_OK"), "Expected IDEMPOTENCY_IT_OK output. Output:\n" + run.output);
+        assertThat(run.output).contains("IDEMPOTENCY_IT_OK");
     }
 
     @Test
@@ -102,10 +103,10 @@ class MavenPluginIT {
         Path originalJar = projectDir.resolve("target").resolve("out-file-1.0-SNAPSHOT.jar");
         Path optimizedJar = projectDir.resolve("target").resolve("out-file-1.0-SNAPSHOT-optimized.jar");
 
-        assertTrue(Files.exists(originalJar), "Original out-file scenario jar should exist: " + originalJar);
-        assertTrue(Files.exists(optimizedJar), "Optimized output jar should exist: " + optimizedJar);
+        assertThat(Files.exists(originalJar)).isTrue();
+        assertThat(Files.exists(optimizedJar)).isTrue();
 
-        assertFalse(hasEntry(originalJar, "__classes.zlib"), "Original jar should remain untouched when outJars is used");
+        assertThat(hasEntry(originalJar, "__classes.zlib")).isFalse();
 
         assertCommonBundledManifest(optimizedJar, "me.bechberger.it.OutFileApp");
         assertCommonBundledLayout(optimizedJar);
@@ -113,38 +114,35 @@ class MavenPluginIT {
 
         ProcessResult run = runJar(optimizedJar, List.of());
         assertEquals(0, run.exitCode, "out-file scenario should exit 0. Output:\n" + run.output);
-        assertTrue(run.output.contains("OUT_FILE_IT_OK"), "Expected OUT_FILE_IT_OK output. Output:\n" + run.output);
+        assertThat(run.output).contains("OUT_FILE_IT_OK");
     }
 
     private Path assertScenarioJarExists(String projectName, String jarName) {
         Path projectDir = itProjectsDir.resolve(projectName);
-        assertTrue(Files.exists(projectDir), "Expected scenario directory: " + projectDir);
+        assertThat(Files.exists(projectDir)).isTrue();
         Path jar = projectDir.resolve("target").resolve(jarName);
-        assertTrue(Files.exists(jar), "Expected scenario jar: " + jar);
+        assertThat(Files.exists(jar)).isTrue();
         return jar;
     }
 
     private void assertCommonBundledManifest(Path jarPath, String expectedOriginalMainClass) throws IOException {
         try (JarFile jar = new JarFile(jarPath.toFile())) {
             Manifest manifest = jar.getManifest();
-            assertNotNull(manifest, "Manifest should exist");
+            assertThat(manifest).isNotNull();
             String mainClass = manifest.getMainAttributes().getValue("Main-Class");
-            assertEquals("me.bechberger.femtojar.rt.BundleBootstrap", mainClass,
-                    "Main-Class should be femtojar bootstrap");
+            assertThat(mainClass).isEqualTo("me.bechberger.femtojar.rt.BundleBootstrap");
 
             String originalMainClass = manifest.getMainAttributes().getValue("X-Original-Main-Class");
-            assertEquals(expectedOriginalMainClass, originalMainClass,
-                    "X-Original-Main-Class should match the app main class");
+            assertThat(originalMainClass).isEqualTo(expectedOriginalMainClass);
 
             String femtojarVersion = manifest.getMainAttributes().getValue("X-Femtojar-Version");
-            assertNotNull(femtojarVersion, "X-Femtojar-Version should be present");
+            assertThat(femtojarVersion).isNotNull();
         }
     }
 
     private void assertCommonBundledLayout(Path jarPath) throws IOException {
-        assertTrue(hasEntry(jarPath, "__classes.zlib"), "Expected __classes.zlib entry");
-        assertTrue(hasEntry(jarPath, "me/bechberger/femtojar/rt/BundleBootstrap.class"),
-                "Expected BundleBootstrap runtime class entry");
+        assertThat(hasEntry(jarPath, "__classes.zlib")).isTrue();
+        assertThat(hasEntry(jarPath, "me/bechberger/femtojar/rt/BundleBootstrap.class")).isTrue();
     }
 
     private boolean hasEntry(Path jarPath, String name) throws IOException {
@@ -198,7 +196,7 @@ class MavenPluginIT {
         }
 
         boolean finished = process.waitFor(Duration.ofSeconds(15).toMillis(), TimeUnit.MILLISECONDS);
-        assertTrue(finished, "java -jar process timed out for " + jarPath);
+        assertThat(finished).isTrue();
         return new ProcessResult(process.exitValue(), output.toString());
     }
 

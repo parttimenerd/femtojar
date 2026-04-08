@@ -9,13 +9,14 @@ import java.net.URL;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.jar.Manifest;
 import java.util.zip.InflaterInputStream;
 
 /**
  * Bootstrap class that decompresses the bundled class blob and redirects execution
  * to the original Main-Class using a nested custom ClassLoader.
- *
+ * <p>
  * This becomes the Main-Class in the manifest.
  */
 public class BundleBootstrap extends ClassLoader {
@@ -27,7 +28,6 @@ public class BundleBootstrap extends ClassLoader {
 
     private Map<String, int[]> classIndex;
     private Map<String, int[]> resourceIndex;
-    private int totalUncompressedSize;
     private byte[] classData;
     private boolean bundledResourcesEnabled;
 
@@ -101,12 +101,12 @@ public class BundleBootstrap extends ClassLoader {
                 int length = dis.readInt();
                 resourceIndex.put(resourceName, new int[]{offset, length});
             }
-            totalUncompressedSize = dis.readInt();
+            int totalUncompressedSize = dis.readInt();
 
             int classBlobLength = packed.length - classBlobOffset;
             if (classBlobLength != totalUncompressedSize) {
                 throw new IOException("Invalid packed blob length: expected " + totalUncompressedSize +
-                        " but got " + classBlobLength);
+                                      " but got " + classBlobLength);
             }
             classData = new byte[classBlobLength];
             System.arraycopy(packed, classBlobOffset, classData, 0, classBlobLength);
@@ -118,7 +118,7 @@ public class BundleBootstrap extends ClassLoader {
      */
     private byte[] decompressBlobFully() throws IOException {
         try (InputStream is = ClassLoader.getSystemResourceAsStream(BLOB_RESOURCE);
-             InflaterInputStream iis = new InflaterInputStream(is)) {
+             InflaterInputStream iis = new InflaterInputStream(Objects.requireNonNull(is))) {
             return iis.readAllBytes();
         }
     }

@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
-import java.util.Properties;
 
 /**
  * Runs ProGuard in-process via the {@code Configuration} / {@code ProGuard.execute()} API.

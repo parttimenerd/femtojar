@@ -425,9 +425,6 @@ public class JarReencoder {
             // Deflated is smaller – let the stream compress it
             entry.setMethod(ZipEntry.DEFLATED);
             entry.setSize(content.length);
-            output.putNextEntry(entry);
-            output.write(content);
-            output.closeEntry();
         } else {
             // Stored is smaller or equal – write raw bytes
             entry.setMethod(ZipEntry.STORED);
@@ -436,10 +433,10 @@ public class JarReencoder {
             CRC32 crc = new CRC32();
             crc.update(content);
             entry.setCrc(crc.getValue());
-            output.putNextEntry(entry);
-            output.write(content);
-            output.closeEntry();
         }
+        output.putNextEntry(entry);
+        output.write(content);
+        output.closeEntry();
     }
 
     /**

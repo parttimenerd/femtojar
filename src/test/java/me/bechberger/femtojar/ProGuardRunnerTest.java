@@ -14,7 +14,8 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProGuardRunnerTest {
 
@@ -29,10 +30,10 @@ class ProGuardRunnerTest {
                 List.of("-dontobfuscate", "-dontshrink", "-dontoptimize"),
                 Collections.emptyList());
 
-        assertTrue(Files.exists(outputJar));
-        assertTrue(Files.size(outputJar) > 0);
+        assertThat(Files.exists(outputJar)).isTrue();
+        assertThat(Files.size(outputJar)).isPositive();
         try (JarFile jar = new JarFile(outputJar.toFile())) {
-            assertNotNull(jar.getEntry("me/bechberger/femtojar/fixture/CliExecApp.class"));
+            assertThat(jar.getEntry("me/bechberger/femtojar/fixture/CliExecApp.class")).isNotNull();
         }
     }
 
@@ -55,9 +56,9 @@ class ProGuardRunnerTest {
         ProGuardRunner.run(inputJar, outputJar, false, userConfig,
                 Collections.emptyList(), Collections.emptyList());
 
-        assertTrue(Files.exists(outputJar));
+        assertThat(Files.exists(outputJar)).isTrue();
         try (JarFile jar = new JarFile(outputJar.toFile())) {
-            assertNotNull(jar.getEntry("me/bechberger/femtojar/fixture/CliExecApp.class"));
+            assertThat(jar.getEntry("me/bechberger/femtojar/fixture/CliExecApp.class")).isNotNull();
         }
     }
 
