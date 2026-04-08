@@ -23,49 +23,46 @@ public class Main implements Callable<Integer> {
     @Parameters(index = "1", arity = "0..1", description = "Output JAR file")
     public Path outputJar;
 
-    @Option(names = {"--compression"}, description = "Compression mode: default|zopfli|max")
+    @Option(names = "--compression", description = "Compression mode: default|zopfli|max")
     public String compressionMode = "default";
 
-    @Option(names = {"--deflate"}, description = "Use deflate compression")
+    @Option(names = "--deflate", description = "Use deflate compression")
     public boolean deflate = false;
 
-    @Option(names = {"--zopfli"}, description = "Use zopfli compression")
+    @Option(names = "--zopfli", description = "Use zopfli compression")
     public boolean zopfli = false;
 
-    @Option(names = {"--max"}, description = "Use max compression")
+    @Option(names = "--max", description = "Use maximum zopfli compression")
     public boolean max = false;
 
-    @Option(names = {"--bundle-resources"}, description = "Bundle resources")
-    public boolean bundleResources = false;
-
-    @Option(names = {"--no-bundle-resources"}, description = "Do not bundle resources")
+    @Option(names = "--no-bundle-resources", description = "Do not bundle resources and keep the as proper files in the JAR")
     public boolean noBundleResources = false;
 
-    @Option(names = {"--parallel"}, description = "Enable parallel processing")
+    @Option(names = "--parallel", description = "Enable parallel processing")
     public boolean parallel = false;
 
-    @Option(names = {"--proguard"}, description = "Run ProGuard before reencoding")
+    @Option(names = "--proguard", description = "Run ProGuard before reencoding")
     public boolean proguard = false;
 
-    @Option(names = {"--proguard-config"}, description = "Path to ProGuard configuration file")
+    @Option(names = "--proguard-config", description = "Path to ProGuard configuration file")
     public Path proguardConfig;
 
-    @Option(names = {"--proguard-options"}, description = "Inline ProGuard option (repeatable)")
+    @Option(names = "--proguard-options", description = "Inline ProGuard option (repeatable)")
     public List<String> proguardOptions;
 
-    @Option(names = {"--proguard-out"}, description = "Separate ProGuard output JAR path")
+    @Option(names = "--proguard-out", description = "Separate ProGuard output JAR path, by default this will be a temporary folder")
     public Path proguardOut;
 
-    @Option(names = {"--no-proguard-default-config"}, description = "Do not prepend the bundled default ProGuard config")
+    @Option(names = "--no-proguard-default-config", description = "Do not prepend the bundled default ProGuard config")
     public boolean noProguardDefaultConfig = false;
 
-    @Option(names = {"--verbose", "--rverbose"}, description = "Enable verbose output")
+    @Option(names = "--verbose", description = "Enable verbose output")
     public boolean verbose = false;
 
-    @Option(names = {"--benchmark"}, description = "Run benchmarks")
+    @Option(names = "--benchmark", description = "Run benchmarks")
     public boolean benchmark = false;
 
-    @Option(names = {"--benchmark-format"}, description = "Benchmark format: text|markdown|json")
+    @Option(names = "--benchmark-format", description = "Benchmark output format: text|markdown|json")
     public String benchmarkFormat = "text";
 
     public static void main(String[] args) {
@@ -88,14 +85,12 @@ public class Main implements Callable<Integer> {
                 System.err.println(ex.getMessage());
                 return 2;
             }
-        } else if (deflate) {
-            compression = CompressionMode.DEFAULT;
         } else if (zopfli) {
             compression = CompressionMode.ZOPFLI;
         } else if (max) {
             compression = CompressionMode.MAX;
         }
-        boolean bundle = bundleResources && !noBundleResources;
+        boolean bundle = !noBundleResources;
         boolean par = parallel;
         boolean verb = verbose;
         if (benchmark) {
@@ -147,27 +142,19 @@ public class Main implements Callable<Integer> {
 
             JarReencoder.ReencodeResult result;
             PrintStream logger = verb ? System.err : null;
+            JarReencoder.ReencodeOptions options = new JarReencoder.ReencodeOptions(
+                    compression.useZopfli(),
+                    compression.zopfliIterations(),
+                    bundle,
+                    "cli",
+                    par,
+                    logger);
             Path outJar = outputJar == null ? inputJar : outputJar;
             if (reencoderInput.equals(outJar)) {
-                result = reencoder.reencodeInPlaceBundled(
-                        reencoderInput,
-                        compression.useZopfli(),
-                        compression.zopfliIterations(),
-                        bundle,
-                        "cli",
-                        par,
-                        logger);
+                result = reencoder.reencodeInPlaceBundled(reencoderInput, options);
             } else {
                 long originalSize = Files.size(reencoderInput);
-                reencoder.rewriteJarBundled(
-                        reencoderInput,
-                        outJar,
-                        compression.useZopfli(),
-                        compression.zopfliIterations(),
-                        bundle,
-                        "cli",
-                        par,
-                        logger);
+                reencoder.rewriteJarBundled(reencoderInput, outJar, options);
                 long newSize = Files.size(outJar);
                 result = new JarReencoder.ReencodeResult(originalSize, newSize);
             }

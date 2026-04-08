@@ -34,6 +34,26 @@ import java.util.zip.ZipOutputStream;
 
 public class JarReencoder {
 
+    private static final int BLOB_FLAG_BUNDLED_RESOURCES = 1;
+
+    public record ReencodeOptions(boolean useZopfli,
+                                  int zopfliIterations,
+                                  boolean bundleResources,
+                                  String femtojarVersion,
+                                  boolean parallel,
+                                  PrintStream logger) {
+        public ReencodeOptions {
+            femtojarVersion = femtojarVersion == null || femtojarVersion.isBlank() ? "unknown" : femtojarVersion;
+        }
+
+        public ReencodeOptions(boolean useZopfli,
+                               int zopfliIterations,
+                               boolean bundleResources,
+                               String femtojarVersion) {
+            this(useZopfli, zopfliIterations, bundleResources, femtojarVersion, false, null);
+        }
+    }
+
     public ReencodeResult reencodeInPlace(Path jarPath) throws IOException {
         Objects.requireNonNull(jarPath, "jarPath");
         if (!Files.exists(jarPath) || !Files.isRegularFile(jarPath)) {
@@ -59,34 +79,13 @@ public class JarReencoder {
     public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
                                                  int zopfliIterations,
                                                  boolean bundleResources) throws IOException {
-        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
-            detectFemtojarVersion(), false, null);
+        return reencodeInPlaceBundled(jarPath, new ReencodeOptions(
+                useZopfli, zopfliIterations, bundleResources, detectFemtojarVersion()));
     }
 
-    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
-                                                 int zopfliIterations,
-                                                 boolean bundleResources,
-                                                 String femtojarVersion) throws IOException {
-        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
-            femtojarVersion, false, null);
-    }
-
-    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
-                                                 int zopfliIterations,
-                                                 boolean bundleResources,
-                                                 String femtojarVersion,
-                                                 PrintStream logger) throws IOException {
-        return reencodeInPlaceBundled(jarPath, useZopfli, zopfliIterations, bundleResources,
-                femtojarVersion, false, logger);
-    }
-
-    public ReencodeResult reencodeInPlaceBundled(Path jarPath, boolean useZopfli,
-                                                 int zopfliIterations,
-                                                 boolean bundleResources,
-                                                 String femtojarVersion,
-                                                 boolean parallel,
-                                                 PrintStream logger) throws IOException {
+    public ReencodeResult reencodeInPlaceBundled(Path jarPath, ReencodeOptions options) throws IOException {
         Objects.requireNonNull(jarPath, "jarPath");
+        Objects.requireNonNull(options, "options");
         if (!Files.exists(jarPath) || !Files.isRegularFile(jarPath)) {
             throw new IOException("JAR file does not exist: " + jarPath);
         }
@@ -94,8 +93,7 @@ public class JarReencoder {
         long originalSize = Files.size(jarPath);
         Path tempFile = Files.createTempFile(jarPath.getParent(), jarPath.getFileName().toString(), ".tmp");
         try {
-            rewriteJarBundled(jarPath, tempFile, useZopfli, zopfliIterations, bundleResources,
-                femtojarVersion, parallel, logger);
+            rewriteJarBundled(jarPath, tempFile, options);
             long newSize = Files.size(tempFile);
             moveIntoPlace(tempFile, jarPath);
             return new ReencodeResult(originalSize, newSize);
@@ -105,35 +103,8 @@ public class JarReencoder {
         }
     }
 
-    /**
-     * Legacy overload - uses lexical ordering.
-     */
-    void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
-                           int zopfliIterations, boolean bundleResources,
-                           String femtojarVersion) throws IOException {
-        rewriteJarBundled(sourceJar, targetJar, useZopfli, zopfliIterations, bundleResources,
-            femtojarVersion, false, null);
-    }
-
-    void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
-                           int zopfliIterations, boolean bundleResources,
-                           String femtojarVersion,
-                           boolean parallel) throws IOException {
-        rewriteJarBundled(sourceJar, targetJar, useZopfli, zopfliIterations, bundleResources,
-            femtojarVersion, parallel, null);
-    }
-
-    /**
-     * Rewrites a JAR file with bundled class compression.
-      *
-      * @param parallel currently unused, kept for API compatibility
-     * @param logger optional PrintStream for verbose logging
-     */
-    void rewriteJarBundled(Path sourceJar, Path targetJar, boolean useZopfli,
-                           int zopfliIterations, boolean bundleResources,
-                           String femtojarVersion,
-                                    boolean parallel,
-                           PrintStream logger) throws IOException {
+    void rewriteJarBundled(Path sourceJar, Path targetJar, ReencodeOptions options) throws IOException {
+        Objects.requireNonNull(options, "options");
         try (JarFile jarFile = new JarFile(sourceJar.toFile())) {
             if (isAlreadyBundledJar(jarFile)) {
                 Files.copy(sourceJar, targetJar, StandardCopyOption.REPLACE_EXISTING);
@@ -181,7 +152,7 @@ public class JarReencoder {
 
                 if (inEntry.getName().endsWith(".class")) {
                     classEntries.put(inEntry.getName(), content);
-                } else if (bundleResources && !isMetaInfEntry(inEntry.getName())) {
+                } else if (options.bundleResources() && !isMetaInfEntry(inEntry.getName())) {
                     bundledResourceEntries.put(inEntry.getName(), content);
                 } else {
                     // Store resource
@@ -203,7 +174,7 @@ public class JarReencoder {
                 classIndex.put(className, new int[]{offset, content.length});
             }
 
-            if (bundleResources) {
+            if (options.bundleResources()) {
                 List<String> resourceNames = new ArrayList<>(bundledResourceEntries.keySet());
                 resourceNames.sort(String::compareTo);
                 for (String resourceName : resourceNames) {
@@ -217,11 +188,12 @@ public class JarReencoder {
             // Serialize the index
             byte[] indexData = serializeIndex(classIndex, resourceIndex, blob.size());
 
-            // New blob format: [indexSize][index][classBlob]
-            byte[] packedBlob = packBlob(indexData, blob.toByteArray());
+            // New blob format: [config][indexSize][index][classBlob]
+            byte[] packedBlob = packBlob(indexData, blob.toByteArray(), options.bundleResources());
 
             // Compress the packed blob in one stream
-            byte[] compressedBlob = compressClassBlob(packedBlob, useZopfli, zopfliIterations);
+            byte[] compressedBlob = compressClassBlob(
+                    packedBlob, options.useZopfli(), options.zopfliIterations());
 
             // Write the output JAR
             try (ZipOutputStream output = new ZipOutputStream(
@@ -229,7 +201,7 @@ public class JarReencoder {
                 output.setLevel(Deflater.BEST_COMPRESSION);
 
                 // Write modified manifest
-                writeManifest(output, originalMainClass, femtojarVersion);
+                writeManifest(output, originalMainClass, options.femtojarVersion());
 
                 // Write bootstrap classes
                 writeBootstrapClasses(output);
@@ -274,9 +246,11 @@ public class JarReencoder {
         }
     }
 
-    private static byte[] packBlob(byte[] indexData, byte[] classBlobData) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(indexData.length + classBlobData.length + 4);
+    private static byte[] packBlob(byte[] indexData, byte[] classBlobData, boolean bundleResources) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(indexData.length + classBlobData.length + 5);
         try (java.io.DataOutputStream dos = new java.io.DataOutputStream(baos)) {
+            int config = bundleResources ? BLOB_FLAG_BUNDLED_RESOURCES : 0;
+            dos.writeByte(config);
             dos.writeInt(indexData.length);
             dos.write(indexData);
             dos.write(classBlobData);
@@ -361,9 +335,14 @@ public class JarReencoder {
      * Writes bootstrap classes by reading them from the classpath and compressing them.
      */
     private void writeBootstrapClasses(ZipOutputStream output) throws IOException {
-        // BundleBootstrap
-        byte[] bootstrapClass = readClassFromResource("me/bechberger/femtojar/rt/BundleBootstrap.class");
-        writeBestEntry(output, "me/bechberger/femtojar/rt/BundleBootstrap.class", 0, bootstrapClass);
+        List<String> runtimeClasses = List.of(
+                "me/bechberger/femtojar/rt/BundleBootstrap.class",
+                "me/bechberger/femtojar/rt/BundleBootstrap$FemtoJarURLStreamHandler.class",
+                "me/bechberger/femtojar/rt/BundleBootstrap$FemtoJarURLConnection.class");
+        for (String runtimeClass : runtimeClasses) {
+            byte[] classBytes = readClassFromResource(runtimeClass);
+            writeBestEntry(output, runtimeClass, 0, classBytes);
+        }
     }
 
     /**
@@ -492,8 +471,6 @@ public class JarReencoder {
             Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
-
-
 
     public record ReencodeResult(long originalSize, long newSize) {
     }

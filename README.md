@@ -76,7 +76,7 @@ Important:
     <failOnError>true</failOnError>
     <skip>false</skip>
     <compressionMode>MAX</compressionMode>
-    <bundleResources>false</bundleResources>
+    <bundleResources>true</bundleResources>
     <jars>
       <jar>
         <in>${project.build.finalName}.jar</in>
@@ -96,21 +96,21 @@ See [example-project/pom.xml](example-project/pom.xml) for a complete usage exam
 
 ### Plugin Parameters
 
-| Parameter | Description | Default |
-| --- | --- | --- |
-| `jars` | List of JAR entries to reencode. Each entry has an `<in>` path and optional `<out>` path. | Required |
-| `jars[i].in` | Input JAR path (relative to `${project.build.directory}` if not absolute) | Required per entry |
-| `jars[i].out` | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
-| `compressionMode` | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
-| `bundleResources` | Bundle non-`META-INF/*` resources into the blob. | `true` |
-| `failOnError` | Fail build immediately on rewrite errors. | `true` |
-| `skip` | Skip plugin execution. | `false` |
-| `proguard.enabled` | Run ProGuard before reencoding. | `false` |
+| Parameter                     | Description | Default |
+|-------------------------------| --- | --- |
+| `jars`                        | List of JAR entries to reencode. Each entry has an `<in>` path and optional `<out>` path. | Required |
+| `jars[i].in`                  | Input JAR path (relative to `${project.build.directory}` if not absolute) | Required per entry |
+| `jars[i].out`                 | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
+| `compressionMode`             | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |
+| `bundleResources`             | Bundle non-`META-INF/*` resources into the blob. | `true` |
+| `failOnError`                 | Fail build immediately on rewrite errors. | `true` |
+| `skip`                        | Skip plugin execution. | `false` |
+| `proguard.enabled`            | Run ProGuard before reencoding. | `false` |
 | `proguard.prependDefaultConfig` | Prepend the bundled default ProGuard config. | `true` |
-| `proguard.configFile` | Path to a user ProGuard `.pro` config file. | Not set |
-| `proguard.options` | Inline ProGuard options (e.g. `-dontobfuscate`). | Not set |
-| `proguard.out` | Separate ProGuard output path. If omitted, a temp file is used. | Not set |
-| `proguard.libraryJars` | Additional `-libraryjars` paths for ProGuard. | Not set |
+| `proguard.configFile`         | Path to a user ProGuard `.pro` config file. | Not set |
+| `proguard.options`            | Inline ProGuard options (e.g. `-dontobfuscate`). | Not set |
+| `proguard.out`                | Separate ProGuard output path. If omitted, a temp file is used. | Not set |
+| `proguard.libraryJars`        | Additional `-libraryjars` paths for ProGuard. | Not set |
 
 All `proguard.*` parameters can also be specified per-JAR inside `<jar><proguard>...</proguard></jar>`. Per-JAR values override the global setting; null fields fall back to the global config.
 
@@ -163,13 +163,15 @@ In addition to ProGuard, the following settings can be overridden per-JAR:
 
 ## Resource Bundling Caveats
 
-When `bundleResources=true` (default), non-`META-INF/*` resources are packed into the compressed blob for better compression. However, this has limitations:
+In the default case when not `bundleResources=false`, non-`META-INF/*` resources are packed into the compressed blob for better compression.
 
-- ✅ **Works:** `ClassLoader.getResourceAsStream()` and `Class.getResourceAsStream()` — stream-based access is fully functional
-- ⚠️ **May break:** `ClassLoader.getResource()` and `Class.getResource()` — URL-based resource loading fails because resources are no longer actual ZIP entries
-- ⚠️ **Framework issues:** Libraries that scan JAR entries directly or expect real `jar://` URLs may break (e.g., frameworks doing classpath resource discovery)
+The bootstrap handler registers a handler for the custom "femtojar:" URL protocol via
+[URL.setURLStreamHandlerFactory](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/net/URL.html#setURLStreamHandlerFactory(java.net.URLStreamHandlerFactory)),
+but this only works with when no other code uses URL.setURLStreamHandlerFactory. This is usually the case, but if not,
+then set `bundleResources=false`.
 
-**To disable resource bundling** and keep resources as normal ZIP entries:
+But there might be other issues related to frameworks that expect specific URLs or else,
+so test resources properly in your particular use case and disable this feature when you see any problems.
 
 ```xml
 <configuration>
@@ -228,14 +230,13 @@ CLI options:
 - First positional arg: input JAR path
 - Second positional arg (optional): output JAR path (defaults to in-place rewrite)
 - `--compression <default|zopfli|max>`: compression preset (`default`=deflate, `zopfli`=7 iterations, `max`=100 iterations)
-- `--bundle-resources`: enable resource bundling
-- `--no-bundle-resources`: disable resource bundling
+- `--no-bundle-resources`: disable resource bundling, keep the resource files separate in the JAR
 - `--proguard`: run ProGuard before reencoding
 - `--proguard-config <path>`: path to a ProGuard `.pro` config file
 - `--proguard-options <option>`: inline ProGuard option (repeatable)
 - `--proguard-out <path>`: write ProGuard output to a separate path instead of a temp file
 - `--no-proguard-default-config`: do not prepend the bundled default ProGuard config
-- `--rverbose` (or `--verbose`): print verbose processing output
+- `--verbose`: print verbose processing output
 - `--benchmark`: run a non-destructive benchmark matrix and print size/time comparisons
 - `--benchmark-format <text|markdown|json>`: optional benchmark output format (default: `text`)
 - `-h`, `--help`: show usage

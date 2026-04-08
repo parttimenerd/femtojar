@@ -18,6 +18,7 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MainTest {
@@ -98,7 +99,7 @@ class MainTest {
 
         RunResult result = FemtoCli.runCaptured(
             new Main(),
-                new String[]{inputJar.toString(), outputJar.toString(), "--bundle-resources", "--deflate"});
+                new String[]{inputJar.toString(), outputJar.toString(), "--deflate"});
 
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
         try (JarFile jar = new JarFile(outputJar.toFile())) {
@@ -120,11 +121,12 @@ class MainTest {
 
         String output = result.out();
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
-        assertTrue(output.contains("Result table"), () -> output);
-        assertTrue(output.contains("default"));
-        assertTrue(output.contains("zopfli"));
-        assertTrue(output.contains("proguard default"));
-        assertTrue(output.contains("Best reduction:"));
+        assertThat(output)
+                .contains("Result table")
+                .contains("default")
+                .contains("zopfli")
+                .contains("proguard default")
+                .contains("Best reduction:");
 
         byte[] currentBytes = Files.readAllBytes(inputJar);
         assertNotEquals(0, currentBytes.length);
@@ -143,9 +145,10 @@ class MainTest {
 
         String output = result.out();
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
-        assertTrue(output.contains("## femtojar benchmark"), () -> output);
-        assertTrue(output.contains("| mode | size(bytes) | saved(%) | time(s) |"));
-        assertTrue(output.contains("| default |"));
+        assertThat(output)
+                .contains("## femtojar benchmark")
+                .contains("| mode | size(bytes) | saved(%) | time(s) |")
+                .contains("| default |");
     }
 
     @Test
@@ -160,9 +163,10 @@ class MainTest {
 
         String output = result.out();
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
-        assertTrue(output.contains("\"input\""), () -> output);
-        assertTrue(output.contains("\"results\""), () -> output);
-        assertTrue(output.contains("\"mode\": \"default\""), () -> output);
+        assertThat(output)
+                .contains("\"input\"")
+                .contains("\"results\"")
+                .contains("\"mode\": \"default\"");
     }
 
     @Test
@@ -188,8 +192,9 @@ class MainTest {
 
         int runExit = process.waitFor();
         assertEquals(0, runExit, () -> "Process failed. Output:\n" + output);
-        assertTrue(output.contains("CLI_EXEC_OK"), () -> output);
-        assertTrue(output.contains("ARG_COUNT=2"), () -> output);
+        assertThat(output)
+                .contains("CLI_EXEC_OK")
+                .contains("ARG_COUNT=2");
     }
 
     @Test
@@ -272,6 +277,69 @@ class MainTest {
 
         assertEquals(0, result.exitCode(), () -> "stderr: " + result.err());
         assertTrue(Files.exists(outputJar));
+    }
+
+    @Test
+    void bundledResourcesExposeFemtojarUrlProtocol() throws Exception {
+        Path tempDir = Files.createTempDirectory("femtojar-cli-resource-url-test");
+        Path inputJar = tempDir.resolve("input.jar");
+        Path outputJar = tempDir.resolve("output.jar");
+        createSampleJarWithResource(inputJar);
+
+        RunResult encodeResult = FemtoCli.runCaptured(
+            new Main(),
+                new String[]{inputJar.toString(), outputJar.toString(), "--deflate"});
+        assertEquals(0, encodeResult.exitCode(), () -> "stderr: " + encodeResult.err());
+
+        String output = runJar(outputJar);
+        assertThat(output)
+                .contains("RESOURCE_URL_PRESENT=true")
+                .contains("RESOURCE_URL_PROTOCOL=femtojar")
+                .contains("RESOURCE_URL_CONTENT=name=cli-test")
+                .contains("RESOURCE_STREAM_CONTENT=name=cli-test")
+                .contains("MISSING_URL_PRESENT=false")
+                .contains("MISSING_STREAM_PRESENT=false");
+    }
+
+    @Test
+    void noBundleResourcesKeepsRegularJarResourceAccess() throws Exception {
+        Path tempDir = Files.createTempDirectory("femtojar-cli-resource-jar-test");
+        Path inputJar = tempDir.resolve("input.jar");
+        Path outputJar = tempDir.resolve("output.jar");
+        createSampleJarWithResource(inputJar);
+
+        RunResult encodeResult = FemtoCli.runCaptured(
+                new Main(),
+                new String[]{inputJar.toString(), outputJar.toString(), "--deflate", "--no-bundle-resources"});
+        assertEquals(0, encodeResult.exitCode(), () -> "stderr: " + encodeResult.err());
+
+        try (JarFile jar = new JarFile(outputJar.toFile())) {
+            assertNotNull(jar.getEntry("app.properties"), "Expected app.properties to remain a normal JAR entry");
+        }
+
+        String output = runJar(outputJar);
+        assertThat(output)
+                .contains("RESOURCE_URL_PRESENT=true")
+                .contains("RESOURCE_URL_CONTENT=name=cli-test")
+                .contains("RESOURCE_STREAM_CONTENT=name=cli-test")
+                .contains("MISSING_URL_PRESENT=false")
+                .contains("MISSING_STREAM_PRESENT=false")
+                .doesNotContain("RESOURCE_URL_PROTOCOL=femtojar");
+    }
+
+    private static String runJar(Path jarPath) throws Exception {
+        Process process = new ProcessBuilder(List.of("java", "-jar", jarPath.toString()))
+                .redirectErrorStream(true)
+                .start();
+
+        String output;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            output = reader.lines().reduce("", (a, b) -> a + b + "\n");
+        }
+
+        int runExit = process.waitFor();
+        assertEquals(0, runExit, () -> "Process failed. Output:\n" + output);
+        return output;
     }
 
     private static void createSampleJar(Path jarPath) throws Exception {

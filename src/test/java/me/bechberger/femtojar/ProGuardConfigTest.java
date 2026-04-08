@@ -22,68 +22,58 @@ class ProGuardConfigTest {
 
     @Test
     void prependDefaultConfigReturnsFalseWhenSetExplicitly() {
-        ProGuardConfig cfg = new ProGuardConfig();
-        cfg.setPrependDefaultConfig(false);
+        ProGuardConfig cfg = new ProGuardConfig(null, false, null, null, null, null);
         assertFalse(cfg.isPrependDefaultConfig());
     }
 
     @Test
     void mergeWithNullGlobalReturnsSelf() {
-        ProGuardConfig perJar = new ProGuardConfig();
-        perJar.setEnabled(true);
+        ProGuardConfig perJar = new ProGuardConfig(true, null, null, null, null, null);
         ProGuardConfig merged = perJar.mergeWith(null);
         assertTrue(merged.isEnabled());
     }
 
     @Test
     void mergeInheritsGlobalWhenPerJarNull() {
-        ProGuardConfig global = new ProGuardConfig();
-        global.setEnabled(true);
-        global.setConfigFile("/global.pro");
-        global.setOptions(List.of("-dontobfuscate"));
-        global.setLibraryJars(List.of("/lib/rt.jar"));
+        ProGuardConfig global = new ProGuardConfig(
+                true,
+                null,
+                "/global.pro",
+                List.of("-dontobfuscate"),
+                null,
+                List.of("/lib/rt.jar"));
 
         ProGuardConfig perJar = new ProGuardConfig();
         ProGuardConfig merged = perJar.mergeWith(global);
 
         assertTrue(merged.isEnabled());
-        assertEquals("/global.pro", merged.getConfigFile());
-        assertEquals(List.of("-dontobfuscate"), merged.getOptions());
-        assertEquals(List.of("/lib/rt.jar"), merged.getLibraryJars());
+        assertEquals("/global.pro", merged.configFile());
+        assertEquals(List.of("-dontobfuscate"), merged.options());
+        assertEquals(List.of("/lib/rt.jar"), merged.libraryJars());
     }
 
     @Test
     void mergePerJarOverridesGlobal() {
-        ProGuardConfig global = new ProGuardConfig();
-        global.setEnabled(true);
-        global.setConfigFile("/global.pro");
-        global.setPrependDefaultConfig(true);
-
-        ProGuardConfig perJar = new ProGuardConfig();
-        perJar.setConfigFile("/override.pro");
-        perJar.setPrependDefaultConfig(false);
+        ProGuardConfig global = new ProGuardConfig(true, true, "/global.pro", null, null, null);
+        ProGuardConfig perJar = new ProGuardConfig(null, false, "/override.pro", null, null, null);
 
         ProGuardConfig merged = perJar.mergeWith(global);
 
         assertTrue(merged.isEnabled()); // inherited
-        assertEquals("/override.pro", merged.getConfigFile()); // overridden
+        assertEquals("/override.pro", merged.configFile()); // overridden
         assertFalse(merged.isPrependDefaultConfig()); // overridden
     }
 
     @Test
     void mergeDoesNotMutateOriginals() {
-        ProGuardConfig global = new ProGuardConfig();
-        global.setEnabled(true);
-        global.setConfigFile("/global.pro");
-
-        ProGuardConfig perJar = new ProGuardConfig();
-        perJar.setConfigFile("/per-jar.pro");
+        ProGuardConfig global = new ProGuardConfig(true, null, "/global.pro", null, null, null);
+        ProGuardConfig perJar = new ProGuardConfig(null, null, "/per-jar.pro", null, null, null);
 
         ProGuardConfig merged = perJar.mergeWith(global);
 
         // Originals unchanged
-        assertEquals("/global.pro", global.getConfigFile());
-        assertEquals("/per-jar.pro", perJar.getConfigFile());
-        assertEquals("/per-jar.pro", merged.getConfigFile());
+        assertEquals("/global.pro", global.configFile());
+        assertEquals("/per-jar.pro", perJar.configFile());
+        assertEquals("/per-jar.pro", merged.configFile());
     }
 }

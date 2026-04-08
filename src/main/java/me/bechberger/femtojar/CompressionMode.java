@@ -4,7 +4,7 @@ package me.bechberger.femtojar;
  * Compression mode presets used by CLI, plugin, and benchmark commands.
  */
 public enum CompressionMode {
-    DEFAULT("default", false, 9, "default (deflate level=9)"),
+    DEFAULT("default", false, -1, "default (deflate level=9)"),
     ZOPFLI("zopfli", true, 7, "zopfli (iterations=7)"),
     MAX("max", true, 100, "max (zopfli iterations=100)");
 

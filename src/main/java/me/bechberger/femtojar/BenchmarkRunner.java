@@ -146,15 +146,14 @@ public class BenchmarkRunner {
             } else {
                 tempOut = createTempJar(inputJar);
                 JarReencoder reencoder = new JarReencoder();
-                reencoder.rewriteJarBundled(
-                        currentInput,
-                        tempOut,
+                JarReencoder.ReencodeOptions options = new JarReencoder.ReencodeOptions(
                         benchmarkCase.mode().useZopfli(),
                         benchmarkCase.mode().zopfliIterations(),
                         true,
                         "cli-benchmark",
                         false,
                         null);
+                reencoder.rewriteJarBundled(currentInput, tempOut, options);
                 size = Files.size(tempOut);
             }
 

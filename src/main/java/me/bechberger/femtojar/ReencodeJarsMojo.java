@@ -58,33 +58,15 @@ public class ReencodeJarsMojo extends AbstractMojo {
      * the corresponding plugin-level value when omitted.
      */
     public static class JarEntry {
-        /**
-         * Input JAR path (relative to buildDirectory if not absolute).
-         */
         private String in;
-
-        /**
-         * Optional output JAR path. If omitted, the input JAR is rewritten in place.
-         */
         private String out;
-
-        /**
-         * Per-JAR compression mode override (DEFAULT | ZOPFLI | MAX).
-         * Inherits the plugin-level {@code compressionMode} when null.
-         */
         private CompressionMode compressionMode;
-
-        /**
-         * Per-JAR resource-bundling override.
-         * Inherits the plugin-level {@code bundleResources} when null.
-         */
         private Boolean bundleResources;
-
-        /**
-         * Per-JAR ProGuard configuration override.
-         * Inherits the plugin-level {@code proguard} settings when null.
-         */
         private ProGuardConfig proguard;
+
+        public JarEntry() {
+            // Required by Maven/Plexus configuration mapping.
+        }
 
         public String getIn() { return in; }
         public void setIn(String in) { this.in = in; }
@@ -137,22 +119,22 @@ public class ReencodeJarsMojo extends AbstractMojo {
             if (effectiveProguard != null && effectiveProguard.isEnabled()) {
                 try {
                     Path pgOut;
-                    if (effectiveProguard.getOut() != null && !effectiveProguard.getOut().isBlank()) {
-                        pgOut = resolveJarPath(effectiveProguard.getOut());
+                    if (effectiveProguard.out() != null && !effectiveProguard.out().isBlank()) {
+                        pgOut = resolveJarPath(effectiveProguard.out());
                     } else {
                         proguardTempFile = Files.createTempDirectory("proguard-work-")
                                 .resolve("proguard-out.jar");
                         pgOut = proguardTempFile;
                     }
-                    Path pgConfig = effectiveProguard.getConfigFile() != null
-                            ? Path.of(effectiveProguard.getConfigFile()) : null;
-                    List<Path> pgLibs = effectiveProguard.getLibraryJars() != null
-                            ? effectiveProguard.getLibraryJars().stream().map(Path::of).toList()
+                    Path pgConfig = effectiveProguard.configFile() != null
+                            ? Path.of(effectiveProguard.configFile()) : null;
+                    List<Path> pgLibs = effectiveProguard.libraryJars() != null
+                            ? effectiveProguard.libraryJars().stream().map(Path::of).toList()
                             : Collections.emptyList();
                     getLog().info("Running ProGuard on " + sourceJarPath + " -> " + pgOut);
                     ProGuardRunner.run(sourceJarPath, pgOut,
                             effectiveProguard.isPrependDefaultConfig(),
-                            pgConfig, effectiveProguard.getOptions(), pgLibs);
+                            pgConfig, effectiveProguard.options(), pgLibs);
                     reencoderInput = pgOut;
                 } catch (IOException e) {
                     String message = "ProGuard failed for: " + sourceJarPath;
@@ -166,26 +148,18 @@ public class ReencodeJarsMojo extends AbstractMojo {
 
             try {
                 JarReencoder.ReencodeResult result;
-                if (reencoderInput.equals(targetJarPath)) {
-                    result = reencoder.reencodeInPlaceBundled(
-                        reencoderInput,
+                JarReencoder.ReencodeOptions options = new JarReencoder.ReencodeOptions(
                         effectiveCompression.useZopfli(),
                         effectiveCompression.zopfliIterations(),
                         effectiveBundleResources,
                         femtojarVersion,
                         false,
                         null);
+                if (reencoderInput.equals(targetJarPath)) {
+                    result = reencoder.reencodeInPlaceBundled(reencoderInput, options);
                 } else {
                     long originalSize = Files.size(reencoderInput);
-                    reencoder.rewriteJarBundled(
-                        reencoderInput,
-                        targetJarPath,
-                        effectiveCompression.useZopfli(),
-                        effectiveCompression.zopfliIterations(),
-                        effectiveBundleResources,
-                        femtojarVersion,
-                        false,
-                        null);
+                    reencoder.rewriteJarBundled(reencoderInput, targetJarPath, options);
                     long newSize = Files.size(targetJarPath);
                     result = new JarReencoder.ReencodeResult(originalSize, newSize);
                 }
