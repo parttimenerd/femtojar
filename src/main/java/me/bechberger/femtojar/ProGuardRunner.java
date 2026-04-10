@@ -18,6 +18,8 @@ public class ProGuardRunner {
 
     private static final String DEFAULT_CONFIG_RESOURCE = "/proguard-default.pro";
 
+    private static final Object PROGUARD_LOCK = new Object();
+
     /**
      * Run ProGuard on the given input JAR.
      *
@@ -43,8 +45,9 @@ public class ProGuardRunner {
             }
         }
 
+        Path tempConfig = null;
         if (prependDefaultConfig) {
-            Path tempConfig = extractDefaultConfig();
+            tempConfig = extractDefaultConfig();
             args.add("-include");
             args.add(tempConfig.toAbsolutePath().toString());
         }
@@ -56,59 +59,69 @@ public class ProGuardRunner {
 
         if (options != null) {
             for (String opt : options) {
-                for (String token : opt.split("\\s+")) {
-                    if (!token.isEmpty()) {
-                        args.add(token);
-                    }
+                // Pass each option string as-is; ProGuard's own tokenizer handles
+                // quoted paths and spaces correctly (BUG-30 fix).
+                if (!opt.isEmpty()) {
+                    args.add(opt);
                 }
             }
         }
 
-        // Redirect System.out to stderr during ProGuard execution to prevent
-        // ProGuard notes/version banners from polluting structured output (JSON).
-        PrintStream origOut = System.out;
-        PrintStream origErr = System.err;
-        ByteArrayOutputStream proguardErr = new ByteArrayOutputStream();
-        PrintStream capturedErr = new PrintStream(proguardErr, true, StandardCharsets.UTF_8);
-        System.setOut(System.err);
-        System.setErr(capturedErr);
+        // Synchronize on a lock to prevent concurrent System.out/err redirects (BUG-11).
         try {
-            proguard.Configuration configuration = new proguard.Configuration();
-            try (proguard.ConfigurationParser parser =
-                         new proguard.ConfigurationParser(args.toArray(new String[0]),
-                                 System.getProperties())) {
-                parser.parse(configuration);
-            }
+        synchronized (PROGUARD_LOCK) {
+            // Redirect System.out to stderr during ProGuard execution to prevent
+            // ProGuard notes/version banners from polluting structured output (JSON).
+            PrintStream origOut = System.out;
+            PrintStream origErr = System.err;
+            ByteArrayOutputStream proguardErr = new ByteArrayOutputStream();
+            PrintStream capturedErr = new PrintStream(proguardErr, true, StandardCharsets.UTF_8);
+            System.setOut(System.err);
+            System.setErr(capturedErr);
             try {
-                new proguard.ProGuard(configuration).execute();
-            } catch (ConcurrentModificationException e) {
-                // retry once
+                proguard.Configuration configuration = new proguard.Configuration();
+                try (proguard.ConfigurationParser parser =
+                             new proguard.ConfigurationParser(args.toArray(new String[0]),
+                                     System.getProperties())) {
+                    parser.parse(configuration);
+                }
+                try {
+                    new proguard.ProGuard(configuration).execute();
+                } catch (ConcurrentModificationException e) {
+                    // Retry once on ConcurrentModificationException (BUG-10)
+                    new proguard.ProGuard(configuration).execute();
+                }
+            } catch (IOException e) {
+                throw e;
+            } catch (Exception e) {
+                String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getName();
+                e.printStackTrace(System.err);
+                throw new IOException("ProGuard failed (" + e.getClass().getSimpleName() + "): " + detail, e);
+            } finally {
+                capturedErr.flush();
+                String errText = proguardErr.toString(StandardCharsets.UTF_8);
+                for (String line : errText.split("\\R")) {
+                    if ("ProGuard, version undefined".equals(line.trim())) {
+                        continue;
+                    }
+                    if (!line.isEmpty()) {
+                        origErr.println(line);
+                    }
+                }
+                System.setErr(origErr);
+                System.setOut(origOut);
             }
-        } catch (IOException e) {
-            throw e;
-        } catch (Exception e) {
-            String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getName();
-            e.printStackTrace(System.err);
-            throw new IOException("ProGuard failed (" + e.getClass().getSimpleName() + "): " + detail, e);
+        }
         } finally {
-            capturedErr.flush();
-            String errText = proguardErr.toString(StandardCharsets.UTF_8);
-            for (String line : errText.split("\\R")) {
-                if ("ProGuard, version undefined".equals(line.trim())) {
-                    continue;
-                }
-                if (!line.isEmpty()) {
-                    origErr.println(line);
-                }
+            // Clean up temp config file (BUG-23: no more deleteOnExit leak)
+            if (tempConfig != null) {
+                try { Files.deleteIfExists(tempConfig); } catch (IOException ignored) {}
             }
-            System.setErr(origErr);
-            System.setOut(origOut);
         }
     }
 
     private static Path extractDefaultConfig() throws IOException {
         Path tempFile = Files.createTempFile("proguard-default-", ".pro");
-        tempFile.toFile().deleteOnExit();
         try (InputStream is = ProGuardRunner.class.getResourceAsStream(DEFAULT_CONFIG_RESOURCE)) {
             if (is == null) {
                 throw new IOException("Bundled ProGuard config not found: " + DEFAULT_CONFIG_RESOURCE);

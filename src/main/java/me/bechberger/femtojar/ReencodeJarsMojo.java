@@ -155,7 +155,7 @@ public class ReencodeJarsMojo extends AbstractMojo {
                         femtojarVersion,
                         false,
                         null);
-                if (reencoderInput.equals(targetJarPath)) {
+                if (isInPlace(reencoderInput, targetJarPath)) {
                     result = reencoder.reencodeInPlaceBundled(reencoderInput, options);
                 } else {
                     long originalSize = Files.size(reencoderInput);
@@ -213,5 +213,20 @@ public class ReencodeJarsMojo extends AbstractMojo {
             throw new MojoExecutionException("Parameter 'buildDirectory' is not available");
         }
         return Paths.get(buildDirectory).resolve(configuredPath).normalize();
+    }
+
+    /**
+     * Determines whether source and target refer to the same file,
+     * using Files.isSameFile when possible for path normalization (BUG-18).
+     */
+    private static boolean isInPlace(Path source, Path target) {
+        if (source.equals(target)) {
+            return true;
+        }
+        try {
+            return Files.exists(target) && Files.isSameFile(source, target);
+        } catch (IOException e) {
+            return false;
+        }
     }
 }

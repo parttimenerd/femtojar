@@ -6,10 +6,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.net.URLStreamHandlerFactory;
+import java.security.CodeSource;
+import java.security.ProtectionDomain;
+import java.security.cert.Certificate;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
+import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.zip.InflaterInputStream;
 
@@ -18,54 +26,101 @@ import java.util.zip.InflaterInputStream;
  * to the original Main-Class using a nested custom ClassLoader.
  * <p>
  * This becomes the Main-Class in the manifest.
+ * <p>
+ * Bytecode-size-conscious: avoids lambdas, string concat via {@code +}, and
+ * unnecessary method/field overhead to keep the runtime footprint small.
  */
-public class BundleBootstrap extends ClassLoader {
-    // Resource names
-    private static final String BLOB_RESOURCE = "__classes.zlib";
-    private static final String MANIFEST_RESOURCE = "META-INF/MANIFEST.MF";
-    private static final String ORIGINAL_MAIN_CLASS_ATTR = "X-Original-Main-Class";
-    private static final int BLOB_FLAG_BUNDLED_RESOURCES = 1;
+public class BundleBootstrap extends ClassLoader implements URLStreamHandlerFactory {
 
     private Map<String, int[]> classIndex;
     private Map<String, int[]> resourceIndex;
     private byte[] classData;
     private boolean bundledResourcesEnabled;
+    private Set<String> directoryPaths;
+    private URL jarUrl;
+    private Manifest manifest;
+    private ClassLoader parentCL;
 
     public static void main(String[] args) throws Exception {
         new BundleBootstrap().start(args);
     }
 
     private void start(String[] args) throws Exception {
+        ClassLoader cl = BundleBootstrap.class.getClassLoader();
+        parentCL = cl != null ? cl : ClassLoader.getSystemClassLoader();
+
         readPackedBlob();
+        readManifest();
+        computeDirectoryPaths();
+        resolveJarUrl();
 
         Thread.currentThread().setContextClassLoader(this);
         if (bundledResourcesEnabled) {
             installFemtojarUrlHandlerFactory();
         }
 
-        // Read original Main-Class from manifest
-        String originalMainClass = readOriginalMainClass();
+        String originalMainClass = manifest.getMainAttributes().getValue("X-Original-Main-Class");
+        if (originalMainClass == null) {
+            throw new IOException("Missing X-Original-Main-Class");
+        }
 
-        // Load and invoke original main
         Class<?> mainClass = Class.forName(originalMainClass, true, this);
         Method mainMethod = mainClass.getMethod("main", String[].class);
         mainMethod.invoke(null, (Object) args);
     }
 
-    private void installFemtojarUrlHandlerFactory() {
+    private void resolveJarUrl() {
         try {
-            URL.setURLStreamHandlerFactory(
-                    protocol -> "femtojar".equals(protocol) ? new FemtoJarURLStreamHandler(this) : null);
-        } catch (Error ignored) {
-            // URLStreamHandlerFactory can only be set once per JVM.
+            URL blobUrl = parentCL.getResource("__classes.zlib");
+            if (blobUrl != null && "jar".equals(blobUrl.getProtocol())) {
+                String spec = blobUrl.toString();
+                int bangIdx = spec.indexOf("!/");
+                if (bangIdx > 0) {
+                    jarUrl = new URL(spec.substring(4, bangIdx)); // skip "jar:"
+                }
+            }
+        } catch (Exception ignored) {
         }
     }
 
-    /**
-     * Reads and parses packed blob resource.
-     * Format: [byte config][int indexSize][indexBytes][classBlobBytes].
-     * Index format: version, class entries, resource entries, total size.
-     */
+    private void computeDirectoryPaths() {
+        directoryPaths = new HashSet<>();
+        for (String name : classIndex.keySet()) {
+            // class names use dots, convert to path
+            addParentDirectories(name.replace('.', '/'));
+        }
+        for (String name : resourceIndex.keySet()) {
+            addParentDirectories(name);
+        }
+    }
+
+    private void addParentDirectories(String path) {
+        int idx = path.lastIndexOf('/');
+        while (idx > 0) {
+            String dir = path.substring(0, idx);
+            if (!directoryPaths.add(dir)) {
+                break; // already added this and all parents
+            }
+            idx = dir.lastIndexOf('/');
+        }
+    }
+
+    private void installFemtojarUrlHandlerFactory() {
+        try {
+            URL.setURLStreamHandlerFactory(this);
+        } catch (Error e) {
+            System.err.println("[femtojar] URL handler factory already set; femtojar: URLs from string form will fail.");
+        }
+    }
+
+    @Override
+    public java.net.URLStreamHandler createURLStreamHandler(String protocol) {
+        if ("femtojar".equals(protocol)) {
+            return new FemtoJarURLStreamHandler(this);
+        }
+        return null;
+    }
+
     private void readPackedBlob() throws IOException {
         classIndex = new HashMap<>();
         resourceIndex = new HashMap<>();
@@ -73,17 +128,17 @@ public class BundleBootstrap extends ClassLoader {
         byte[] packed = decompressBlobFully();
         try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(packed))) {
             int config = dis.readUnsignedByte();
-            bundledResourcesEnabled = (config & BLOB_FLAG_BUNDLED_RESOURCES) != 0;
+            bundledResourcesEnabled = (config & 1) != 0;
 
             int indexSize = dis.readInt();
             int classBlobOffset = 5 + indexSize;
             if (indexSize < 0 || classBlobOffset < 5 || classBlobOffset > packed.length) {
-                throw new IOException("Invalid packed blob header");
+                throw new IOException("Bad header");
             }
 
             int version = dis.readInt();
             if (version != 1) {
-                throw new IOException("Unsupported index format version: " + version);
+                throw new IOException("Bad version");
             }
 
             int numEntries = dis.readInt();
@@ -105,35 +160,29 @@ public class BundleBootstrap extends ClassLoader {
 
             int classBlobLength = packed.length - classBlobOffset;
             if (classBlobLength != totalUncompressedSize) {
-                throw new IOException("Invalid packed blob length: expected " + totalUncompressedSize +
-                                      " but got " + classBlobLength);
+                throw new IOException("Length mismatch");
             }
             classData = new byte[classBlobLength];
             System.arraycopy(packed, classBlobOffset, classData, 0, classBlobLength);
         }
     }
 
-    /**
-     * Decompresses the __classes.zlib blob using InflaterInputStream (ZLIB format).
-     */
     private byte[] decompressBlobFully() throws IOException {
-        try (InputStream is = ClassLoader.getSystemResourceAsStream(BLOB_RESOURCE);
-             InflaterInputStream iis = new InflaterInputStream(Objects.requireNonNull(is))) {
+        InputStream is = parentCL.getResourceAsStream("__classes.zlib");
+        if (is == null) {
+            throw new IOException("No blob");
+        }
+        try (InflaterInputStream iis = new InflaterInputStream(is)) {
             return iis.readAllBytes();
         }
     }
 
-    /**
-     * Reads the original Main-Class attribute from the manifest.
-     */
-    private String readOriginalMainClass() throws IOException {
-        try (InputStream is = ClassLoader.getSystemResourceAsStream(MANIFEST_RESOURCE)) {
-            Manifest manifest = new Manifest(is);
-            String mainClass = manifest.getMainAttributes().getValue(ORIGINAL_MAIN_CLASS_ATTR);
-            if (mainClass == null) {
-                throw new IOException("Manifest missing " + ORIGINAL_MAIN_CLASS_ATTR + " attribute");
+    private void readManifest() throws IOException {
+        try (InputStream is = parentCL.getResourceAsStream("META-INF/MANIFEST.MF")) {
+            if (is == null) {
+                throw new IOException("No manifest");
             }
-            return mainClass;
+            manifest = new Manifest(is);
         }
     }
 
@@ -143,7 +192,47 @@ public class BundleBootstrap extends ClassLoader {
         if (entry == null) {
             throw new ClassNotFoundException(name);
         }
-        return defineClass(name, classData, entry[0], entry[1]);
+
+        int lastDot = name.lastIndexOf('.');
+        if (lastDot > 0) {
+            String packageName = name.substring(0, lastDot);
+            if (getDefinedPackage(packageName) == null) {
+                try {
+                    String specTitle = null, specVersion = null, specVendor = null;
+                    String implTitle = null, implVersion = null, implVendor = null;
+                    if (manifest != null) {
+                        String pkgPath = packageName.replace('.', '/').concat("/");
+                        Attributes pkgAttrs = manifest.getAttributes(pkgPath);
+                        Attributes mainAttrs = manifest.getMainAttributes();
+                        specTitle = manifestAttr(pkgAttrs, mainAttrs, "Specification-Title");
+                        specVersion = manifestAttr(pkgAttrs, mainAttrs, "Specification-Version");
+                        specVendor = manifestAttr(pkgAttrs, mainAttrs, "Specification-Vendor");
+                        implTitle = manifestAttr(pkgAttrs, mainAttrs, "Implementation-Title");
+                        implVersion = manifestAttr(pkgAttrs, mainAttrs, "Implementation-Version");
+                        implVendor = manifestAttr(pkgAttrs, mainAttrs, "Implementation-Vendor");
+                    }
+                    definePackage(packageName, specTitle, specVersion, specVendor,
+                            implTitle, implVersion, implVendor, null);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+
+        ProtectionDomain pd = null;
+        if (jarUrl != null) {
+            CodeSource cs = new CodeSource(jarUrl, (Certificate[]) null);
+            pd = new ProtectionDomain(cs, null, this, null);
+        }
+
+        return defineClass(name, classData, entry[0], entry[1], pd);
+    }
+
+    private static String manifestAttr(Attributes pkgAttrs, Attributes mainAttrs, String name) {
+        if (pkgAttrs != null) {
+            String val = pkgAttrs.getValue(name);
+            if (val != null) return val;
+        }
+        return mainAttrs != null ? mainAttrs.getValue(name) : null;
     }
 
     @Override
@@ -152,16 +241,43 @@ public class BundleBootstrap extends ClassLoader {
         if (entry != null) {
             return new ByteArrayInputStream(classData, entry[0], entry[1]);
         }
+        // Also serve .class entries from classIndex (BUG-17)
+        int[] classEntry = resolveClassEntry(name);
+        if (classEntry != null) {
+            return new ByteArrayInputStream(classData, classEntry[0], classEntry[1]);
+        }
         return super.getResourceAsStream(name);
+    }
+
+    private int[] resolveClassEntry(String resourceName) {
+        if (resourceName != null && resourceName.endsWith(".class")) {
+            String className = resourceName.substring(0, resourceName.length() - 6).replace('/', '.');
+            return classIndex.get(className);
+        }
+        return null;
     }
 
     @Override
     protected URL findResource(String name) {
-        if (!resourceIndex.containsKey(name)) {
-            return null;
+        // Check bundled resources
+        if (resourceIndex.containsKey(name)) {
+            return makeFemtojarUrl(name);
         }
+        // Check class entries as resources (BUG-6)
+        if (resolveClassEntry(name) != null) {
+            return makeFemtojarUrl(name);
+        }
+        // Synthesize directory resources from known paths (BUG-28)
+        String dirName = name.endsWith("/") ? name.substring(0, name.length() - 1) : name;
+        if (directoryPaths != null && directoryPaths.contains(dirName)) {
+            return makeFemtojarUrl(name);
+        }
+        return null;
+    }
+
+    private URL makeFemtojarUrl(String name) {
         try {
-            return new URL(null, "femtojar:/" + name, new FemtoJarURLStreamHandler(this));
+            return new URL(null, "femtojar:/".concat(name), new FemtoJarURLStreamHandler(this));
         } catch (IOException ignored) {
             return null;
         }
@@ -169,16 +285,20 @@ public class BundleBootstrap extends ClassLoader {
 
     @Override
     protected Enumeration<URL> findResources(String name) throws IOException {
-        URL resource = findResource(name);
-        if (resource != null) {
-            return java.util.Collections.enumeration(java.util.List.of(resource));
+        URL localResource = findResource(name);
+        Enumeration<URL> parentResources = super.findResources(name);
+        if (localResource == null) {
+            return parentResources;
         }
-        return super.findResources(name);
+        // Merge local + parent results
+        List<URL> merged = new ArrayList<>();
+        merged.add(localResource);
+        while (parentResources.hasMoreElements()) {
+            merged.add(parentResources.nextElement());
+        }
+        return java.util.Collections.enumeration(merged);
     }
 
-    /**
-     * Handles "femtojar:" URLs to serve resources from the in-memory class blob.
-     */
     static class FemtoJarURLStreamHandler extends java.net.URLStreamHandler {
         private final BundleBootstrap bootstrap;
 
@@ -191,10 +311,18 @@ public class BundleBootstrap extends ClassLoader {
             String path = url.getPath();
             String resourceName = path.startsWith("/") ? path.substring(1) : path;
             int[] entry = bootstrap.resourceIndex.get(resourceName);
-            if (entry == null) {
-                throw new IOException("Resource not found: " + resourceName);
+            if (entry != null) {
+                return new FemtoJarURLConnection(url, bootstrap.classData, entry[0], entry[1]);
             }
-            return new FemtoJarURLConnection(url, bootstrap.classData, entry[0], entry[1]);
+            int[] classEntry = bootstrap.resolveClassEntry(resourceName);
+            if (classEntry != null) {
+                return new FemtoJarURLConnection(url, bootstrap.classData, classEntry[0], classEntry[1]);
+            }
+            String dirName = resourceName.endsWith("/") ? resourceName.substring(0, resourceName.length() - 1) : resourceName;
+            if (bootstrap.directoryPaths != null && bootstrap.directoryPaths.contains(dirName)) {
+                return new FemtoJarURLConnection(url, new byte[0], 0, 0);
+            }
+            throw new IOException("Not found: ".concat(resourceName));
         }
     }
 
@@ -211,13 +339,16 @@ public class BundleBootstrap extends ClassLoader {
         }
 
         @Override
-        public void connect() {
-            // No-op, data is in memory
-        }
+        public void connect() {}
 
         @Override
         public InputStream getInputStream() {
             return new ByteArrayInputStream(data, offset, length);
+        }
+
+        @Override
+        public int getContentLength() {
+            return length;
         }
     }
 }

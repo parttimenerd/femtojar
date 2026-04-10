@@ -24,9 +24,9 @@ public class Main implements Callable<Integer> {
     public Path outputJar;
 
     @Option(names = "--compression", description = "Compression mode: default|zopfli|max")
-    public String compressionMode = "default";
+    public String compressionMode;
 
-    @Option(names = "--deflate", description = "Use deflate compression")
+    @Option(names = "--deflate", description = "Use deflate compression (same as --compression default)")
     public boolean deflate = false;
 
     @Option(names = "--zopfli", description = "Use zopfli compression")
@@ -37,9 +37,6 @@ public class Main implements Callable<Integer> {
 
     @Option(names = "--no-bundle-resources", description = "Do not bundle resources and keep the as proper files in the JAR")
     public boolean noBundleResources = false;
-
-    @Option(names = "--parallel", description = "Enable parallel processing")
-    public boolean parallel = false;
 
     @Option(names = "--proguard", description = "Run ProGuard before reencoding")
     public boolean proguard = false;
@@ -85,13 +82,13 @@ public class Main implements Callable<Integer> {
                 System.err.println(ex.getMessage());
                 return 2;
             }
-        } else if (zopfli) {
-            compression = CompressionMode.ZOPFLI;
         } else if (max) {
             compression = CompressionMode.MAX;
+        } else if (zopfli) {
+            compression = CompressionMode.ZOPFLI;
         }
+        // --deflate is explicitly DEFAULT, which is already the default
         boolean bundle = !noBundleResources;
-        boolean par = parallel;
         boolean verb = verbose;
         if (benchmark) {
             BenchmarkRunner.Format format;
@@ -111,7 +108,8 @@ public class Main implements Callable<Integer> {
                     format,
                     proguardConfig,
                     proguardOptions != null ? proguardOptions : Collections.emptyList(),
-                    noProguardDefaultConfig);
+                    noProguardDefaultConfig,
+                    bundle);
         }
         JarReencoder reencoder = new JarReencoder();
         Path proguardTempFile = null;
@@ -147,10 +145,20 @@ public class Main implements Callable<Integer> {
                     compression.zopfliIterations(),
                     bundle,
                     "cli",
-                    par,
+                    false,
                     logger);
             Path outJar = outputJar == null ? inputJar : outputJar;
-            if (reencoderInput.equals(outJar)) {
+            boolean inPlace;
+            try {
+                inPlace = Files.exists(outJar) && Files.isSameFile(reencoderInput, outJar);
+            } catch (IOException e) {
+                // Files don't exist yet or can't be compared — not in-place
+                inPlace = reencoderInput.equals(outJar);
+            }
+            if (outputJar == null) {
+                inPlace = true; // explicit in-place when no output specified
+            }
+            if (inPlace) {
                 result = reencoder.reencodeInPlaceBundled(reencoderInput, options);
             } else {
                 long originalSize = Files.size(reencoderInput);

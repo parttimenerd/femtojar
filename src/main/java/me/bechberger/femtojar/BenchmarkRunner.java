@@ -1,5 +1,7 @@
 package me.bechberger.femtojar;
 
+import me.bechberger.util.json.PrettyPrinter;
+
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
@@ -7,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,6 +33,7 @@ public class BenchmarkRunner {
     private static final List<BenchmarkCase> CASES = List.of(
             new BenchmarkCase(CompressionMode.DEFAULT, false),
             new BenchmarkCase(CompressionMode.ZOPFLI, false),
+            new BenchmarkCase(CompressionMode.MAX, false),
             new BenchmarkCase(CompressionMode.DEFAULT, true),
             new BenchmarkCase(CompressionMode.ZOPFLI, true),
             new BenchmarkCase(null, true));
@@ -50,13 +54,15 @@ public class BenchmarkRunner {
      * @param proguardConfig optional ProGuard config file
      * @param proguardOptions optional inline ProGuard options
      * @param noProguardDefaultConfig whether to disable bundled default ProGuard config
+     * @param bundleResources whether to bundle non-META-INF resources
      * @return exit code (0 on success, 1 on failure)
      */
     public int run(Path inputJar,
                    Format format,
                    Path proguardConfig,
                    List<String> proguardOptions,
-                   boolean noProguardDefaultConfig) {
+                   boolean noProguardDefaultConfig,
+                   boolean bundleResources) {
         long originalSize;
         try {
             originalSize = Files.size(inputJar);
@@ -77,7 +83,7 @@ public class BenchmarkRunner {
         List<Future<BenchmarkResult>> futures = new ArrayList<>();
         for (BenchmarkCase benchmarkCase : CASES) {
             futures.add(executor.submit(() ->
-                    runSingleCase(inputJar, benchmarkCase, proguardConfig, pgOptions, noProguardDefaultConfig)));
+                    runSingleCase(inputJar, benchmarkCase, proguardConfig, pgOptions, noProguardDefaultConfig, bundleResources)));
         }
         executor.shutdown();
 
@@ -115,7 +121,8 @@ public class BenchmarkRunner {
                                           BenchmarkCase benchmarkCase,
                                           Path proguardConfig,
                                           List<String> proguardOptions,
-                                          boolean noProguardDefaultConfig) throws IOException {
+                                          boolean noProguardDefaultConfig,
+                                          boolean bundleResources) throws IOException {
         Path tempProguardOut = null;
         Path tempOut = null;
         try {
@@ -149,7 +156,7 @@ public class BenchmarkRunner {
                 JarReencoder.ReencodeOptions options = new JarReencoder.ReencodeOptions(
                         benchmarkCase.mode().useZopfli(),
                         benchmarkCase.mode().zopfliIterations(),
-                        true,
+                        bundleResources,
                         "cli-benchmark",
                         false,
                         null);
@@ -275,41 +282,37 @@ public class BenchmarkRunner {
                             double bestSavedPct,
                             long bestSeconds,
                             Map<String, BenchmarkResult> byLabel) {
-        out.println("{");
-        out.println("  \"input\": \"" + escapeJson(inputJar.toString()) + "\",");
-        out.println("  \"originalSize\": " + originalSize + ",");
-        out.println("  \"bestMode\": \"" + (best != null ? escapeJson(best.benchmarkCase().label()) : "none") + "\",");
-        out.printf(Locale.ROOT, "  \"bestReductionPercent\": %.4f,%n", bestSavedPct);
-        out.println("  \"bestTimeSeconds\": " + bestSeconds + ",");
-        out.println("  \"results\": [");
-        for (int i = 0; i < CASES.size(); i++) {
-            BenchmarkCase benchmarkCase = CASES.get(i);
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("input", inputJar.toString());
+        root.put("originalSize", originalSize);
+        root.put("bestMode", best != null ? best.benchmarkCase().label() : "none");
+        root.put("bestReductionPercent", Double.parseDouble(String.format(Locale.ROOT, "%.4f", bestSavedPct)));
+        root.put("bestTimeSeconds", bestSeconds);
+
+        List<Object> results = new ArrayList<>();
+        for (BenchmarkCase benchmarkCase : CASES) {
             BenchmarkResult result = byLabel.get(benchmarkCase.label());
             if (result == null) {
                 continue;
             }
-            out.println("    {");
-            out.println("      \"mode\": \"" + escapeJson(result.benchmarkCase().label()) + "\",");
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("mode", result.benchmarkCase().label());
             if (result.failed()) {
-                out.println("      \"failed\": true");
+                entry.put("failed", true);
             } else {
                 long saved = originalSize - result.sizeBytes();
                 double savedPct = originalSize == 0 ? 0d : (saved * 100.0) / originalSize;
                 double seconds = result.elapsedMs() / 1000.0;
-                out.println("      \"sizeBytes\": " + result.sizeBytes() + ",");
-                out.printf(Locale.ROOT, "      \"savedPercent\": %.4f,%n", savedPct);
-                out.printf(Locale.ROOT, "      \"elapsedSeconds\": %.4f,%n", seconds);
-                out.println("      \"elapsedMs\": " + result.elapsedMs());
+                entry.put("sizeBytes", result.sizeBytes());
+                entry.put("savedPercent", Double.parseDouble(String.format(Locale.ROOT, "%.4f", savedPct)));
+                entry.put("elapsedSeconds", Double.parseDouble(String.format(Locale.ROOT, "%.4f", seconds)));
+                entry.put("elapsedMs", result.elapsedMs());
             }
-            out.print("    }");
-            out.println(i == CASES.size() - 1 ? "" : ",");
+            results.add(entry);
         }
-        out.println("  ]");
-        out.println("}");
-    }
+        root.put("results", results);
 
-    private static String escapeJson(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        out.println(PrettyPrinter.prettyPrint(root));
     }
 
     private record BenchmarkCase(CompressionMode mode, boolean proguard) {

@@ -61,7 +61,8 @@ public class JarReencoder {
         }
 
         long originalSize = Files.size(jarPath);
-        Path tempFile = Files.createTempFile(jarPath.getParent(), jarPath.getFileName().toString(), ".tmp");
+        Path parentDir = jarPath.getParent() != null ? jarPath.getParent() : Path.of(".");
+        Path tempFile = Files.createTempFile(parentDir, jarPath.getFileName().toString(), ".tmp");
         try {
             rewriteJar(jarPath, tempFile);
             long newSize = Files.size(tempFile);
@@ -91,7 +92,8 @@ public class JarReencoder {
         }
 
         long originalSize = Files.size(jarPath);
-        Path tempFile = Files.createTempFile(jarPath.getParent(), jarPath.getFileName().toString(), ".tmp");
+        Path parentDir = jarPath.getParent() != null ? jarPath.getParent() : Path.of(".");
+        Path tempFile = Files.createTempFile(parentDir, jarPath.getFileName().toString(), ".tmp");
         try {
             rewriteJarBundled(jarPath, tempFile, options);
             long newSize = Files.size(tempFile);
@@ -143,6 +145,11 @@ public class JarReencoder {
                     continue;
                 }
 
+                // Strip JAR signature files — they are invalidated by reencoding (BUG-7).
+                if (isSignatureFile(inEntry.getName())) {
+                    continue;
+                }
+
                 // Skip duplicates
                 if (!seenEntries.add(inEntry.getName())) {
                     continue;
@@ -150,12 +157,12 @@ public class JarReencoder {
 
                 byte[] content = readAllBytes(jarFile.getInputStream(inEntry));
 
-                if (inEntry.getName().endsWith(".class")) {
+                if (isBundleableClassEntry(inEntry.getName())) {
                     classEntries.put(inEntry.getName(), content);
                 } else if (options.bundleResources() && !isMetaInfEntry(inEntry.getName())) {
                     bundledResourceEntries.put(inEntry.getName(), content);
                 } else {
-                    // Store resource
+                    // Store resource (including module-info.class and multi-release classes)
                     resources.put(inEntry.getName(), new ResourceEntry(inEntry.getTime(), content));
                 }
             }
@@ -200,8 +207,8 @@ public class JarReencoder {
                     new BufferedOutputStream(Files.newOutputStream(targetJar)))) {
                 output.setLevel(Deflater.BEST_COMPRESSION);
 
-                // Write modified manifest
-                writeManifest(output, originalMainClass, options.femtojarVersion());
+                // Write modified manifest (preserving original attributes)
+                writeManifest(output, sourceManifest, originalMainClass, options.femtojarVersion());
 
                 // Write bootstrap classes
                 writeBootstrapClasses(output);
@@ -264,14 +271,19 @@ public class JarReencoder {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (java.io.DataOutputStream dos = new java.io.DataOutputStream(baos)) {
             dos.writeInt(1);
-            dos.writeInt(classIndex.size());
-            for (Map.Entry<String, int[]> entry : classIndex.entrySet()) {
+            // Sort entries for deterministic output across JVM implementations (BUG-27)
+            List<Map.Entry<String, int[]>> sortedClasses = new ArrayList<>(classIndex.entrySet());
+            sortedClasses.sort(Map.Entry.comparingByKey());
+            dos.writeInt(sortedClasses.size());
+            for (Map.Entry<String, int[]> entry : sortedClasses) {
                 dos.writeUTF(entry.getKey());
                 dos.writeInt(entry.getValue()[0]);
                 dos.writeInt(entry.getValue()[1]);
             }
-            dos.writeInt(resourceIndex.size());
-            for (Map.Entry<String, int[]> entry : resourceIndex.entrySet()) {
+            List<Map.Entry<String, int[]>> sortedResources = new ArrayList<>(resourceIndex.entrySet());
+            sortedResources.sort(Map.Entry.comparingByKey());
+            dos.writeInt(sortedResources.size());
+            for (Map.Entry<String, int[]> entry : sortedResources) {
                 dos.writeUTF(entry.getKey());
                 dos.writeInt(entry.getValue()[0]);
                 dos.writeInt(entry.getValue()[1]);
@@ -285,9 +297,50 @@ public class JarReencoder {
         return entryName.startsWith("META-INF/");
     }
 
+    private static final Set<String> FEMTOJAR_INTERNAL_ENTRIES = Set.of(
+            "__classes.zlib",
+            "me/bechberger/femtojar/rt/BundleBootstrap.class",
+            "me/bechberger/femtojar/rt/BundleBootstrap$FemtoJarURLStreamHandler.class",
+            "me/bechberger/femtojar/rt/BundleBootstrap$FemtoJarURLConnection.class");
+
     private static boolean isFemtojarInternalEntry(String entryName) {
-        return entryName.startsWith("__classes.")
-                || entryName.startsWith("me/bechberger/femtojar/rt/");
+        return FEMTOJAR_INTERNAL_ENTRIES.contains(entryName);
+    }
+
+    /**
+     * Returns true for .class entries that should be bundled into the blob.
+     * Excludes module-info.class and multi-release versioned classes (META-INF/versions/).
+     */
+    private static boolean isBundleableClassEntry(String entryName) {
+        if (!entryName.endsWith(".class")) {
+            return false;
+        }
+        // module-info.class at any path level must remain as a regular JAR entry
+        if (entryName.equals("module-info.class") || entryName.endsWith("/module-info.class")) {
+            return false;
+        }
+        // Multi-release versioned classes must stay as JAR entries
+        if (entryName.startsWith("META-INF/")) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Returns true for JAR signature files that are invalidated by reencoding.
+     */
+    private static boolean isSignatureFile(String entryName) {
+        if (!entryName.startsWith("META-INF/")) {
+            return false;
+        }
+        String name = entryName.substring("META-INF/".length());
+        // No subdirectories — signature files are directly in META-INF/
+        if (name.contains("/")) {
+            return false;
+        }
+        return name.endsWith(".SF") || name.endsWith(".DSA")
+                || name.endsWith(".RSA") || name.endsWith(".EC")
+                || name.startsWith("SIG-");
     }
 
     private static boolean isAlreadyBundledJar(JarFile jarFile) throws IOException {
@@ -315,17 +368,23 @@ public class JarReencoder {
     /**
      * Writes a modified manifest with updated Main-Class and X-Original-Main-Class.
      */
-    private void writeManifest(ZipOutputStream output, String originalMainClass,
+    private void writeManifest(ZipOutputStream output, Manifest sourceManifest,
+                               String originalMainClass,
                                String femtojarVersion) throws IOException {
-        Manifest manifest = new Manifest();
+        Manifest manifest = new Manifest(sourceManifest);
         Attributes attrs = manifest.getMainAttributes();
-        attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        // Ensure Manifest-Version is present
+        if (attrs.getValue(Attributes.Name.MANIFEST_VERSION) == null) {
+            attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        }
+        // Override Main-Class and add femtojar metadata
         attrs.put(Attributes.Name.MAIN_CLASS, "me.bechberger.femtojar.rt.BundleBootstrap");
         attrs.put(new Attributes.Name("X-Original-Main-Class"), originalMainClass);
         attrs.put(new Attributes.Name("X-Femtojar-Version"),
                 femtojarVersion == null || femtojarVersion.isBlank() ? "unknown" : femtojarVersion);
 
         ZipEntry entry = new ZipEntry("META-INF/MANIFEST.MF");
+        entry.setTime(0L);
         output.putNextEntry(entry);
         manifest.write(output);
         output.closeEntry();

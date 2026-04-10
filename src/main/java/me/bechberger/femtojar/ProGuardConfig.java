@@ -1,5 +1,6 @@
 package me.bechberger.femtojar;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -41,8 +42,20 @@ public record ProGuardConfig(Boolean enabled,
                 enabled != null ? enabled : global.enabled,
                 prependDefaultConfig != null ? prependDefaultConfig : global.prependDefaultConfig,
                 configFile != null ? configFile : global.configFile,
-                options != null ? options : global.options,
+                mergeLists(options, global.options),
                 out != null ? out : global.out,
-                libraryJars != null ? libraryJars : global.libraryJars);
+                mergeLists(libraryJars, global.libraryJars));
+    }
+
+    private static <T> List<T> mergeLists(List<T> perJar, List<T> global) {
+        if (perJar == null) {
+            return global;
+        }
+        if (global == null) {
+            return perJar;
+        }
+        List<T> merged = new ArrayList<>(global);
+        merged.addAll(perJar);
+        return merged;
     }
 }
