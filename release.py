@@ -80,10 +80,6 @@ class ReleaseManager:
             return
         content = self.readme.read_text(encoding="utf-8")
         content = content.replace(f"<version>{old}</version>", f"<version>{new}</version>")
-        content = content.replace(
-            f"target/femtojar-{old}-cli.jar",
-            f"target/femtojar-{new}-cli.jar",
-        )
         self.readme.write_text(content, encoding="utf-8")
 
     def update_example_plugin_version(self, old: str, new: str) -> None:
@@ -310,18 +306,11 @@ java -jar femtojar-{version}-cli.jar app.jar app-optimized.jar
         try:
             # Build jar paths
             jar_path = self.project_root / 'target' / f'femtojar-{version}.jar'
-            cli_jar_path = self.project_root / 'target' / f'femtojar-{version}-cli.jar'
-
             assets = []
             if jar_path.exists():
                 assets.append(str(jar_path))
             else:
                 print(f"⚠️  JAR not found at {jar_path}")
-
-            if cli_jar_path.exists():
-                assets.append(str(cli_jar_path))
-            else:
-                print(f"⚠️  CLI JAR not found at {cli_jar_path}")
 
             create_cmd = ['gh', 'release', 'create', tag,
                           '--title', f'Release {version}',
@@ -437,7 +426,6 @@ def main() -> None:
         print(f"Version: {new}")
         print("Artifacts:")
         print(f"- target/femtojar-{new}.jar")
-        print(f"- target/femtojar-{new}-cli.jar")
     except Exception as exc:
         manager.restore_snapshots(snapshots)
         print(f"\nRelease failed: {exc}")
