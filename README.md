@@ -36,7 +36,7 @@ Important:
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.1.1</version>
+  <version>0.1.2</version>
   <executions>
     <execution>
       <id>recompress-jar</id>
@@ -62,7 +62,7 @@ Important:
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.1.1</version>
+  <version>0.1.2</version>
   <executions>
     <execution>
       <id>recompress-jar</id>
@@ -202,25 +202,25 @@ mvn package
 Run it:
 
 ```bash
-java -jar target/femtojar-0.1.1-cli.jar app.jar app-optimized.jar
+java -jar target/femtojar-0.1.2-cli.jar app.jar app-optimized.jar
 ```
 
 With ProGuard:
 
 ```bash
-java -jar target/femtojar-0.1.1-cli.jar app.jar app-optimized.jar --proguard --proguard-config proguard.conf
+java -jar target/femtojar-0.1.2-cli.jar app.jar app-optimized.jar --proguard --proguard-config proguard.conf
 ```
 
 Benchmark form:
 
 ```bash
-java -jar target/femtojar-0.1.1-cli.jar app.jar --benchmark --benchmark-format markdown
+java -jar target/femtojar-0.1.2-cli.jar app.jar --benchmark --benchmark-format markdown
 ```
 
 Benchmark with custom ProGuard rules used for all `proguard*` benchmark rows:
 
 ```bash
-java -jar target/femtojar-0.1.1-cli.jar app.jar --benchmark --benchmark-format json \
+java -jar target/femtojar-0.1.2-cli.jar app.jar --benchmark --benchmark-format json \
   --proguard-config proguard.conf \
   --proguard-options "-dontwarn"
 ```
