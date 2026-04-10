@@ -36,7 +36,7 @@ Important:
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.1.2</version>
+  <version>0.1.4</version>
   <executions>
     <execution>
       <id>recompress-jar</id>
@@ -62,7 +62,7 @@ Important:
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.1.2</version>
+  <version>0.1.4</version>
   <executions>
     <execution>
       <id>recompress-jar</id>
