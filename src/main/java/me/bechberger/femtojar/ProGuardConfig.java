@@ -4,20 +4,38 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Immutable configuration for the optional ProGuard step.
+ * Configuration for the optional ProGuard step.
  * Used both as a global plugin parameter and as a per-JAR override.
  * Null fields fall back to the global config via {@link #mergeWith(ProGuardConfig)}.
+ * <p>
+ * Must be a plain class (not a record) so Maven can inject values via reflection.
  */
-public record ProGuardConfig(Boolean enabled,
-                             Boolean prependDefaultConfig,
-                             String configFile,
-                             List<String> options,
-                             String out,
-                             List<String> libraryJars) {
+public class ProGuardConfig {
+    Boolean enabled;
+    Boolean prependDefaultConfig;
+    String configFile;
+    List<String> options;
+    String out;
+    List<String> libraryJars;
 
-    public ProGuardConfig() {
-        this(null, null, null, null, null, null);
+    public ProGuardConfig() {}
+
+    public ProGuardConfig(Boolean enabled, Boolean prependDefaultConfig, String configFile,
+                          List<String> options, String out, List<String> libraryJars) {
+        this.enabled = enabled;
+        this.prependDefaultConfig = prependDefaultConfig;
+        this.configFile = configFile;
+        this.options = options;
+        this.out = out;
+        this.libraryJars = libraryJars;
     }
+
+    public Boolean enabled() { return enabled; }
+    public Boolean prependDefaultConfig() { return prependDefaultConfig; }
+    public String configFile() { return configFile; }
+    public List<String> options() { return options; }
+    public String out() { return out; }
+    public List<String> libraryJars() { return libraryJars; }
 
     /** Whether ProGuard is effectively enabled (null treated as false). */
     public boolean isEnabled() {
