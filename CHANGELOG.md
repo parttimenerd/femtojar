@@ -19,39 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-## [0.1.6] - 2026-04-30
-
-### Added
-
-### Changed
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
-
 ## [0.1.5] - 2026-04-30
 
 ### Added
 - Default phase (`package`) set on the `reencode-jars` goal — `<phase>` no longer needed in executions
 - Auto-detection of project JAR when `<jars>` configuration is omitted (defaults to `${project.build.finalName}.jar`)
-
-## [0.2.0] - 2026-04-30
-
-### Added
-
-### Changed
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.1.4] - 2026-04-10
 
