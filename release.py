@@ -252,7 +252,7 @@ class ReleaseManager:
 
     def git_push(self) -> None:
         self.run_command(["git", "push"], "Pushing commits")
-        self.run_command(["git", "push", "--tags"], "Pushing tags")
+        self.run_command(["git", "push", "-f", "--tags"], "Pushing tags")
 
     def create_github_release(self, version: str) -> None:
         """Create a GitHub release with formatted notes and JAR assets."""
