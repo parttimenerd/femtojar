@@ -2,8 +2,10 @@ package me.bechberger.femtojar;
 
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.MavenProject;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,7 +14,7 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 
-@Mojo(name = "reencode-jars", threadSafe = true)
+@Mojo(name = "reencode-jars", threadSafe = true, defaultPhase = LifecyclePhase.PACKAGE)
 public class ReencodeJarsMojo extends AbstractMojo {
 
     @Parameter(property = "femtojar.skip", defaultValue = "false")
@@ -43,9 +45,14 @@ public class ReencodeJarsMojo extends AbstractMojo {
      * List of JAR entries to reencode. Each entry has an input path {@code <in>}
      * and optional output path {@code <out>}. If no output path is specified,
      * the input JAR is rewritten in place.
+     * <p>
+     * If omitted, defaults to a single entry targeting {@code ${project.build.finalName}.jar}.
      */
-    @Parameter(required = true)
+    @Parameter
     private List<JarEntry> jars;
+
+    @Parameter(defaultValue = "${project}", readonly = true, required = true)
+    private MavenProject project;
 
     @Parameter(defaultValue = "${project.build.directory}", readonly = true, required = true)
     private String buildDirectory;
@@ -91,7 +98,11 @@ public class ReencodeJarsMojo extends AbstractMojo {
             return;
         }
         if (jars == null || jars.isEmpty()) {
-            throw new MojoExecutionException("Parameter 'jars' must contain at least one JAR entry");
+            String finalName = project.getBuild().getFinalName() + ".jar";
+            getLog().info("No <jars> configured — defaulting to " + finalName);
+            JarEntry defaultEntry = new JarEntry();
+            defaultEntry.setIn(finalName);
+            jars = List.of(defaultEntry);
         }
         String femtojarVersion = getFemtojarVersion();
         for (JarEntry entry : jars) {

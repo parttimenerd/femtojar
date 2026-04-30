@@ -1,58 +1,67 @@
 # Java Bytecode Size Reduction
 
-**What this is optimizing:** bytes in your shipped artifacts, primarily `.class` files (bytecode + constant pool + attributes) and secondarily your final `.jar`/distribution.
+**What this is optimizing:** Femtojar optimizes your existing JARs without any code changes, but
+it doesn't work libraries and might benefit from optimizing the source code for small bytecode size.
+Which is what this document is for. But only do this if you really need to (or of course if you're curious).
 
-This doesn't include JAR reencoding like [femtojar](https://github.com/parttimenerd/femtojar) does,
-refer to its README. It focusses mainly on things you can do directly without any additional tools.
+The code folder of this guide contains the before and after for all examples discussed in this guide
+and helps you see the differences directly.
 
-My recommendation: First check wether your produced JAR is really to big, then try to use a tool like [femtojar](https://github.com/parttimenerd/femtojar) if its a CLI application and only modify the code by hand if this isn't applicable or sufficient.
+How I would use this document for manually optimizing: Don't. But if you really want, look for all occurrences of the
+before patterns and apply the changes (or tell and LLM to do this).
 
-TODO: replace with small examples and mention setup here
-**Evidence baseline:** `BytecodeSizeDemo.java` in this repo contains small, reproducible micro-deltas for many patterns below. A separate case study of `femtocli` (a real CLI project in this same repo) reduced total `.class` bytes by about **4.2 KB** without public API changes by applying a handful of these techniques.
+TL;DR: __Syntax sugar has downsides, its like real sugar, you might want to avoid it if you're concerned about size.__
 
-**How to use this document:**
-1. Measure the baseline (§0).
-2. Apply one or more changes
-3. Re-measure `.class` bytes *and* the final `.jar`.
-4. Repeat; stop when savings aren't worth complexity.
-
-**Quick navigation by goal:**
-- "My dependencies are too big" → §7 (shading/shrinking)
-- "My source code compiles to surprisingly large bytecode" → §§1–5
-- "I want to strip classfile metadata I don't need" → §6
-- "I want to compress the final jar" → [femtojar](https://github.com/parttimenerd/femtojar)
-
-The techniques where useful for getting the minimal version of [femtocli](https://github.com/parttimenerd/femtocli) small, so it might help you too.
-
-__Syntax sugar has downsides, its like real sugar...__
+Let's start with the most basic thing:
 
 
----
+## Every method has a cost
 
-## 1. The Biggest Reality Check: “Small Source” Can Compile to “Big Bytecode”
+I would recommend inline trivial one/few-use methods, as every such method adds more than 80 bytes of [metadata](https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-4.html#jvms-4.6) and call overhead.
 
-### 1.1 Every class/method has fixed overhead
-
-Even a tiny helper adds a new `.class` file header, constant pool, method table, and attributes.
+Consider the following [example](code/08_inline_single_use_methods/Before.java):
 
 ```java
-// Looks tiny, but still becomes its own .class file.
-final class Tiny {
-  static int add1(int x) { return x + 1; }
+public class Before {
+    static String render(List<String> values) {
+        StringBuilder sb = new StringBuilder();
+        appendLines(sb, values);
+        appendFooter(sb);
+        return sb.toString();
+    }
+
+    private static void appendLines(StringBuilder sb, List<String> values) {
+        for (String value : values) {
+            sb.append(value).append('\n');
+        }
+    }
+
+    private static void appendFooter(StringBuilder sb) {
+        sb.append("-- end --");
+    }
 }
 ```
 
-**Measured example ([`guide/code/17_class_merging`](code/17_class_merging), javac 26-ea): −631 B class / −142 B deflate.**
+When we inline the single use methods, we loose a bit of readability:
 
-Example files:
-- [Before.java](code/17_class_merging/Before.java)
-- [After.java](code/17_class_merging/After.java)
-- [javap_diff_default.diff](code/17_class_merging/javap_diff_default.diff)
+```java
+public class After {
+    static String render(List<String> values) {
+        StringBuilder sb = new StringBuilder();
+        for (String value : values) {
+            sb.append(value).append('\n');
+        }
+        sb.append("-- end --");
+        return sb.toString();
+    }
+}
+```
+We go from 1140 bytes to 844 bytes, saving -296 bytes (-26.0%) in the process.
+We can counter the loss in readability by adding comments.
 
-**Takeaway:** prefer fewer classes and fewer methods in size-critical modules.
+You can see the bytecode diff [here](code/08_inline_single_use_methods/javap_diff_default.diff).
 
-**References:**
-- [Java Virtual Machine Specification: ClassFile structure](https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-4.html)
+Please be aware that you should not inline everything as code duplication also increases the bytecode size.
 
 ---
 
@@ -444,31 +453,7 @@ Example files:
 
 - [JVMS: Inner classes and attributes](https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-4.html)
 
-### 4.2 Inline trivial one-use methods (when it doesn’t harm readability too much)
 
-```java
-// Extra method metadata + call site.
-private static int add(int a, int b) { return a + b; }
-static int sizey(int x) { return add(x, 1); }
-
-// Inlined.
-static int smaller(int x) { return x + 1; }
-```
-
-**Measured example ([`guide/code/08_inline_single_use_methods`](code/08_inline_single_use_methods), javac 26-ea): −296 B class / −93 B deflate.**
-
-Example files:
-- [Before.java](code/08_inline_single_use_methods/Before.java)
-- [After.java](code/08_inline_single_use_methods/After.java)
-- [javap_diff_default.diff](code/08_inline_single_use_methods/javap_diff_default.diff)
-
-**Rule of thumb (from this repo’s case study):** a `private` method called exactly once often costs **~60–80 B** of pure metadata/call-site overhead (method table entry, name/descriptor constants, `Code` attribute header, plus the invoke instruction). Inlining ~10 such methods saved on the order of **~700 B** in one real project.
-
-**Counterpoint (DRY still matters):** if the same logic is repeated across multiple methods/classes, extracting shared functionality can reduce duplicated bytecode and improve software design. For size work, the sweet spot is usually: inline one-off helpers, extract truly repeated logic.
-
-**References:**
-- [JVMS: Method structure in ClassFile](https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-4.html#jvms-4.6)
-- [BYTECODE_SIZE_GUIDE.md (repo case study)](BYTECODE_SIZE_GUIDE.md)
 
 ### 4.3 Class/interface merging and nested-class inlining (advanced)
 

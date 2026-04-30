@@ -32,17 +32,34 @@ Important:
 
 ### Minimal Plugin Configuration
 
+If your project produces a single JAR named `${project.build.finalName}.jar` (the default for shaded/uber JARs), no `<configuration>` block is needed. The JAR is rewritten in place in `${project.build.directory}/${project.build.finalName}.jar` (typically `target/<artifactId>-<version>.jar`):
+
 ```xml
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.1.4</version>
+  <version>0.2.0</version>
   <executions>
     <execution>
-      <id>recompress-jar</id>
-      <phase>package</phase>
       <goals>
-          <goal>reencode-jars</goal>
+        <goal>reencode-jars</goal>
+      </goals>
+    </execution>
+  </executions>
+</plugin>
+```
+
+If you need to target a different JAR or customise behaviour, add a `<configuration>` block:
+
+```xml
+<plugin>
+  <groupId>me.bechberger</groupId>
+  <artifactId>femtojar</artifactId>
+  <version>0.2.0</version>
+  <executions>
+    <execution>
+      <goals>
+        <goal>reencode-jars</goal>
       </goals>
     </execution>
   </executions>
@@ -62,7 +79,7 @@ Important:
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.1.4</version>
+  <version>0.2.0</version>
   <executions>
     <execution>
       <id>recompress-jar</id>
@@ -98,7 +115,7 @@ See [example-project/pom.xml](example-project/pom.xml) for a complete usage exam
 
 | Parameter                     | Description | Default |
 |-------------------------------| --- | --- |
-| `jars`                        | List of JAR entries to reencode. Each entry has an `<in>` path and optional `<out>` path. | Required |
+| `jars`                        | List of JAR entries to reencode. If omitted, defaults to `${project.build.finalName}.jar` rewritten in place. | Auto-detected |
 | `jars[i].in`                  | Input JAR path (relative to `${project.build.directory}` if not absolute) | Required per entry |
 | `jars[i].out`                 | Optional output JAR path. If omitted, input JAR is rewritten in place. | Not set |
 | `compressionMode`             | Compression preset: `DEFAULT` (deflate), `ZOPFLI` (7 iterations), `MAX` (100 iterations). | `DEFAULT` |

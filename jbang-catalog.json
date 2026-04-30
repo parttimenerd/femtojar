@@ -2,7 +2,7 @@
   "catalogs": {},
   "aliases": {
     "femtojar": {
-      "script-ref": "https://github.com/parttimenerd/femtojar/releases/download/v0.1.4/femtojar-0.1.4.jar"
+      "script-ref": "https://github.com/parttimenerd/femtojar/releases/download/v0.2.0/femtojar-0.2.0.jar"
     }
   },
   "templates": {}
