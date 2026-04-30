@@ -268,7 +268,7 @@ class ReleaseManager:
 
 ## Maven
 
-### Plugin
+### Plugin (Minimal)
 ```xml
 <plugin>
   <groupId>me.bechberger</groupId>
@@ -276,8 +276,22 @@ class ReleaseManager:
   <version>{version}</version>
   <executions>
     <execution>
-      <id>recompress-jar</id>
-      <phase>package</phase>
+      <goals>
+        <goal>reencode-jars</goal>
+      </goals>
+    </execution>
+  </executions>
+</plugin>
+```
+
+### Plugin (With Configuration)
+```xml
+<plugin>
+  <groupId>me.bechberger</groupId>
+  <artifactId>femtojar</artifactId>
+  <version>{version}</version>
+  <executions>
+    <execution>
       <goals>
         <goal>reencode-jars</goal>
       </goals>
