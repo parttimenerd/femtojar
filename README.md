@@ -38,7 +38,7 @@ If your project produces a single JAR named `${project.build.finalName}.jar` (th
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.2.0</version>
+  <version>0.2.1</version>
   <executions>
     <execution>
       <goals>
@@ -55,7 +55,7 @@ If you need to target a different JAR or customise behaviour, add a `<configurat
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.2.0</version>
+  <version>0.2.1</version>
   <executions>
     <execution>
       <goals>
@@ -79,7 +79,7 @@ If you need to target a different JAR or customise behaviour, add a `<configurat
 <plugin>
   <groupId>me.bechberger</groupId>
   <artifactId>femtojar</artifactId>
-  <version>0.2.0</version>
+  <version>0.2.1</version>
   <executions>
     <execution>
       <id>recompress-jar</id>
