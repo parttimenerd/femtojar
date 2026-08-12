@@ -227,6 +227,42 @@ jobs:
             esac
           }
 
+          # Re-inject Launcher-Agent-Class entries that femtojar bundles away.
+          # JARs with a Premain-Class/Launcher-Agent-Class (e.g. condensed-data) need those
+          # classes as real unbundled zip entries because the JVM loads them before main().
+          inject_agent_classes() {
+            local source_jar="$1" output_jar="$2"
+            python3 - "$source_jar" "$output_jar" <<'PYEOF'
+import sys, zipfile, tempfile, os, shutil
+src, dst = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(dst, 'r') as zf:
+    manifest = zf.read('META-INF/MANIFEST.MF').decode()
+agent_classes = []
+for line in manifest.splitlines():
+    if line.startswith(('Launcher-Agent-Class:', 'Premain-Class:', 'Agent-Class:')):
+        cls = line.split(':', 1)[1].strip().replace('.', '/') + '.class'
+        agent_classes.append(cls)
+if not agent_classes:
+    sys.exit(0)
+with zipfile.ZipFile(src, 'r') as zf_src:
+    missing = [c for c in agent_classes if c not in zf_src.namelist()]
+    if missing:
+        print(f"::warning::Agent classes not found in source JAR: {missing}", file=sys.stderr)
+        sys.exit(0)
+    class_data = {c: zf_src.read(c) for c in agent_classes}
+tmp = dst + '.tmp'
+with zipfile.ZipFile(dst, 'r') as zf_in, zipfile.ZipFile(tmp, 'w', compression=zipfile.ZIP_DEFLATED) as zf_out:
+    existing = set(zf_in.namelist())
+    for item in zf_in.infolist():
+        zf_out.writestr(item, zf_in.read(item.filename))
+    for cls_path, data in class_data.items():
+        if cls_path not in existing:
+            zf_out.writestr(cls_path, data)
+os.replace(tmp, dst)
+print(f"  injected agent classes: {list(class_data)}")
+PYEOF
+          }
+
           echo "Generating jars for each compression mode (including ProGuard variants) and checking --help exit codes..."
           mkdir -p generated-help-check
           for CASE in "${BENCH_CASES[@]}"; do
@@ -237,12 +273,14 @@ jobs:
               OUTPUT_JAR="generated-help-check/${BASE_NAME}-${MODE}.jar"
               echo "Generating $OUTPUT_JAR from $INPUT_JAR with --compression $MODE"
               java -jar "${CLI_JAR}" "$INPUT_JAR" "$OUTPUT_JAR" --compression "$MODE" > /dev/null
+              inject_agent_classes "$INPUT_JAR" "$OUTPUT_JAR"
               echo "--help check: $OUTPUT_JAR"
               java -jar "$OUTPUT_JAR" --help > /dev/null
 
               PROGUARD_OUTPUT_JAR="generated-help-check/${BASE_NAME}-${MODE}-proguard.jar"
               echo "Generating $PROGUARD_OUTPUT_JAR from $INPUT_JAR with --compression $MODE --proguard"
               java -jar "${CLI_JAR}" "$INPUT_JAR" "$PROGUARD_OUTPUT_JAR" --compression "$MODE" --proguard "${PG_ARGS[@]}" > /dev/null
+              inject_agent_classes "$INPUT_JAR" "$PROGUARD_OUTPUT_JAR"
               echo "--help check: $PROGUARD_OUTPUT_JAR"
               java -jar "$PROGUARD_OUTPUT_JAR" --help > /dev/null
             done
