@@ -1,0 +1,158 @@
+tag: experimental
+maven_coordinates: me.bechberger:femtojar
+tagline: Maven plugin and CLI that shrinks executable JARs via cross-class compression. Compresses all
+  class files as a single blob instead of per-entry ZIP, enabling cross-class deduplication — typically
+  15–30% smaller. Optional ProGuard integration for up to 70% total size reduction.
+tagline_short: Maven plugin that shrinks fat JARs via cross-class compression — 15–30% smaller, up to 70% with ProGuard.
+when_to_use:
+- You need the smallest possible executable (shaded/uber) JAR
+- You want optional ProGuard integration for maximum shrinkage
+when_not_to_use:
+- You are packaging a library JAR (not an executable)
+- Build time is a hard constraint (Zopfli mode is slow)
+- Your code is reflection-heavy (picocli, serialization) — ProGuard needs extra keep rules
+related:
+- label: jstall
+  url: https://github.com/parttimenerd/jstall
+install:
+- label: Maven plugin
+  lang: xml
+  code: |
+    <plugin>
+      <groupId>me.bechberger</groupId>
+      <artifactId>femtojar</artifactId>
+      <version>VERSION</version>
+      <executions>
+        <execution>
+          <goals><goal>reencode-jars</goal></goals>
+        </execution>
+      </executions>
+    </plugin>
+usage:
+- label: Maven
+  lang: bash
+  code: |
+    mvn package
+    # Rewrites target/<artifactId>-<version>.jar in place by default
+- label: CLI
+  lang: bash
+  code: |
+    java -jar femtojar-cli.jar app.jar app-optimized.jar
+    java -jar femtojar-cli.jar app.jar app-optimized.jar --proguard --proguard-config proguard.conf
+how_to:
+- title: Shrink a shaded JAR with the Maven plugin
+  body: |
+    Add femtojar after your shading plugin (e.g. `maven-shade-plugin`) so it runs on the
+    already-assembled uber JAR:
+    ```xml
+    <plugin>
+      <groupId>me.bechberger</groupId>
+      <artifactId>femtojar</artifactId>
+      <version>VERSION</version>
+      <executions>
+        <execution>
+          <goals><goal>reencode-jars</goal></goals>
+        </execution>
+      </executions>
+    </plugin>
+    ```
+    Then run `mvn package`. femtojar rewrites `target/<artifactId>-<version>.jar` in place.
+    The resulting JAR is a standard executable JAR — launch it with `java -jar` as normal.
+
+- title: Shrink a JAR with the standalone CLI
+  body: |
+    Build the CLI jar once with `mvn package`, then use it on any JAR without a Maven project:
+    ```bash
+    java -jar femtojar-cli.jar app.jar                    # rewrite in place
+    java -jar femtojar-cli.jar app.jar app-optimized.jar  # write to separate file
+    java -jar femtojar-cli.jar app.jar app-optimized.jar --compression zopfli
+    java -jar femtojar-cli.jar app.jar app-optimized.jar --proguard --proguard-config proguard.conf
+    ```
+
+- title: Enable ProGuard for maximum shrinkage
+  body: |
+    Add `<proguard><enabled>true</enabled></proguard>` to the plugin configuration.
+    femtojar bundles a default ProGuard config (keep rules for main classes, native methods,
+    enums, serialization, annotations). Always black-box test the result — ProGuard modifies
+    bytecode and can break reflection-heavy code.
+    ```xml
+    <configuration>
+      <proguard>
+        <enabled>true</enabled>
+        <!-- optional: add extra keep rules -->
+        <options>-dontobfuscate</options>
+      </proguard>
+    </configuration>
+    ```
+
+- title: Use Zopfli for maximum compression without ProGuard
+  body: |
+    `ZOPFLI` mode squeezes extra bytes by running more deflate iterations. Much slower
+    than `DEFAULT` but requires no bytecode changes:
+    ```xml
+    <configuration>
+      <compressionMode>ZOPFLI</compressionMode>  <!-- or MAX for 100 iterations -->
+    </configuration>
+    ```
+    `ZOPFLI` runs 7 iterations; `MAX` runs 100. Use `DEFAULT` (standard deflate) for fast builds.
+
+- title: Target a specific JAR or write to a separate output file
+  body: |
+    By default the plugin rewrites `${project.build.finalName}.jar` in place. To target a
+    different JAR or write to a separate path:
+    ```xml
+    <configuration>
+      <jars>
+        <jar>
+          <in>myapp-shaded.jar</in>
+          <out>myapp-shaded-femto.jar</out>
+        </jar>
+      </jars>
+    </configuration>
+    ```
+    Paths are relative to `${project.build.directory}` unless absolute.
+note: Always black-box test after enabling ProGuard — bytecode transformations can break edge cases.
+how_to:
+- title: Enable ProGuard for maximum shrinkage
+  body: |
+    Add `<proguard><enabled>true</enabled></proguard>` to the plugin configuration.
+    femtojar bundles a default ProGuard config (keep rules for main classes, native methods,
+    enums, serialization, annotations). Always black-box test the result — ProGuard modifies
+    bytecode and can break reflection-heavy code.
+    ```xml
+    <configuration>
+      <proguard>
+        <enabled>true</enabled>
+        <!-- optional: add extra keep rules -->
+        <options>-dontobfuscate</options>
+      </proguard>
+    </configuration>
+    ```
+
+- title: Use Zopfli for maximum compression without ProGuard
+  body: |
+    `ZOPFLI` mode squeezes extra bytes by running more deflate iterations. It is much slower
+    than the default `DEFAULT` mode but requires no bytecode changes:
+    ```xml
+    <configuration>
+      <compressionMode>ZOPFLI</compressionMode>  <!-- or MAX for 100 iterations -->
+    </configuration>
+    ```
+    `ZOPFLI` runs 7 iterations; `MAX` runs 100. Use `DEFAULT` (standard deflate) for fast builds.
+
+- title: Target a specific JAR or write to a separate output file
+  body: |
+    By default the plugin rewrites `${project.build.finalName}.jar` in place. To target a
+    different JAR or write to a separate path:
+    ```xml
+    <configuration>
+      <jars>
+        <jar>
+          <in>myapp-shaded.jar</in>
+          <out>myapp-shaded-femto.jar</out>
+        </jar>
+      </jars>
+    </configuration>
+    ```
+    Paths are relative to `${project.build.directory}` unless absolute.
+note: Always black-box test after enabling ProGuard — bytecode transformations can break edge cases.
