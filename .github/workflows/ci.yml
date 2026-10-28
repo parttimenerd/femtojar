@@ -94,6 +94,7 @@ jobs:
     name: Benchmarks (Ubuntu, Java 21)
     runs-on: ubuntu-latest
     needs: example-project
+    continue-on-error: true
 
     steps:
       - name: Checkout code
@@ -139,6 +140,8 @@ jobs:
           rm -f "$RELEASE_JSON"
 
       - name: Download condensed-data artifact
+        id: condensed_data
+        continue-on-error: true
         run: |
           REPO="parttimenerd/condensed-data"
 
@@ -147,7 +150,7 @@ jobs:
           RUN_IDS=$(echo "$RUNS" | jq -r '.workflow_runs[] | select(.conclusion == "success") | .id')
 
           if [ -z "$RUN_IDS" ]; then
-            echo "::error::Could not find any successful ci.yml workflow runs for ${REPO}"
+            echo "::warning::Could not find any successful ci.yml workflow runs for ${REPO} — skipping condensed-data benchmarks"
             exit 1
           fi
 
@@ -164,14 +167,14 @@ jobs:
           done
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::No recent ci.yml run has a condensed-data.jar artifact (all expired?)"
+            echo "::warning::No recent ci.yml run has a condensed-data.jar artifact (all expired?) — skipping condensed-data benchmarks"
             exit 1
           fi
 
           echo "Using run: $RUN_ID"
           echo "Run URL: $RUN_URL"
           echo "CONDENSED_DATA_RUN_URL=$RUN_URL" >> "$GITHUB_ENV"
-          
+
           DOWNLOAD_URL="https://nightly.link/${REPO}/actions/runs/${RUN_ID}/condensed-data.jar.zip"
           PLATFORM_URL="https://nightly.link/${REPO}/actions/runs/${RUN_ID}/platform-jars.zip"
           echo "Downloading condensed-data.jar from: $DOWNLOAD_URL"
@@ -181,7 +184,7 @@ jobs:
           echo "Downloading platform jars from: $PLATFORM_URL"
           curl -fsSL -L -o platform-jars.zip "$PLATFORM_URL"
           python3 scripts/extract_platform_jars.py
-          
+
           ls -lh condensed-data.jar condensed-data-linux-amd64.jar condensed-data-linux-amd64-inflaterless.jar
 
       - name: Run benchmarks and create summary tables
@@ -195,7 +198,7 @@ jobs:
           fi
 
           COMPRESSION_MODES=(default zopfli)
-          BENCH_CASES=(
+          ALL_BENCH_CASES=(
             "demo-app|example-project/target/demo-app.jar|demo-app.json|demo-app.log|demo-app"
             "jstall|jstall-full.jar|jstall.json|jstall.log|jstall"
             "jstall-min|jstall-minimal.jar|jstall-minimal.json|jstall-minimal.log|jstall"
@@ -203,6 +206,17 @@ jobs:
             "cd-amd64|condensed-data-linux-amd64.jar|condensed-data-linux-amd64.json|condensed-data-linux-amd64.log|condensed"
             "cd-inflaterless|condensed-data-linux-amd64-inflaterless.jar|condensed-data-linux-amd64-inflaterless.json|condensed-data-linux-amd64-inflaterless.log|condensed"
           )
+
+          # Skip condensed-data cases if the download step failed
+          BENCH_CASES=()
+          for CASE in "${ALL_BENCH_CASES[@]}"; do
+            IFS='|' read -r LABEL INPUT_JAR _ _ _ <<< "$CASE"
+            if [[ "$INPUT_JAR" == condensed-data* ]] && [ ! -f "$INPUT_JAR" ]; then
+              echo "Skipping $LABEL: $INPUT_JAR not available"
+              continue
+            fi
+            BENCH_CASES+=("$CASE")
+          done
 
           set_pg_args() {
             local profile="$1"
